@@ -1,0 +1,37 @@
+Start testing: Apr 05 11:34 CST
+----------------------------------------------------------
+1/2 Testing: hal_sensor_smoke
+1/2 Test: hal_sensor_smoke
+Command: "/home/dji/car1609/middleware/build_x86/bin/hal_sensor_smoke"
+Directory: /home/dji/car1609/middleware/build_x86/tests
+"hal_sensor_smoke" start time: Apr 05 11:34 CST
+Output:
+----------------------------------------------------------
+[Pandar128] start capture ip=192.168.1.201 data_port=0 gps_port=10110 topic_id=0xe1a4cf20
+[Pandar128] stop capture, published 2 frames
+hal_sensor_smoke: ok (received 2 lidar frames via DCMS, last_seq=1)
+<end of output>
+Test time =   0.26 sec
+----------------------------------------------------------
+Test Passed.
+"hal_sensor_smoke" end time: Apr 05 11:34 CST
+"hal_sensor_smoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: dcms_smoke
+2/2 Test: dcms_smoke
+Command: "/home/dji/car1609/middleware/build_x86/bin/dcms_smoke"
+Directory: /home/dji/car1609/middleware/build_x86/tests
+"dcms_smoke" start time: Apr 05 11:34 CST
+Output:
+----------------------------------------------------------
+dcms_smoke: ok
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"dcms_smoke" end time: Apr 05 11:34 CST
+"dcms_smoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Apr 05 11:34 CST

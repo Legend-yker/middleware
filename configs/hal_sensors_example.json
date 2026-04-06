@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "sensors": [
+    {
+      "id": "front_lidar",
+      "type": "lidar",
+      "driver": "generic_udp",
+      "enabled": true,
+      "params": {
+        "model": "vlp16",
+        "transport": "udp",
+        "ip": "192.168.1.201",
+        "port": 2368
+      }
+    },
+    {
+      "id": "cam0",
+      "type": "camera",
+      "driver": "stub",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "imu0",
+      "type": "imu",
+      "driver": "stub",
+      "enabled": true,
+      "params": {}
+    }
+  ]
+}

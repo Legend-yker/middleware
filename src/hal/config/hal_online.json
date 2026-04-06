@@ -1,0 +1,94 @@
+{
+    "version": "v1",
+    "description": "hal config json",
+    "mode": "online",
+    "project": "thora",
+    "manager": [
+      {
+        "manager_item": "MANAGER_CONTROL",
+        "params": {
+          "support_em": false,
+          "initing": {
+            "function": [
+              "FUNCTION_DATA_HANDLE",
+              "FUNCTION_SENSOR_ATTRIBUTE"
+            ],
+            "sensors": []
+          }
+        }
+      }
+    ],
+    "function": [
+      {
+        "func_item": "FUNCTION_SENSOR_ATTRIBUTE",
+        "params": {
+          "attribute_function": {
+            "attribute_info_publish": true,
+            "attribute_info_server": true,
+            "scam_imu_server": true,
+            "camera_hot_plug": true,
+            "camera_attribute_server": true,
+            "imu_serdes_status_server": false,
+            "camera_driver_info_server": true,
+            "camera_status_server": true
+          },
+          "attribute_diag_list": {
+            "sn_diff": false,
+            "parse_error": true
+          }
+        }
+      },
+      {
+        "func_item": "FUNCTION_DATA_HANDLE",
+        "params": {}
+      },
+      {
+        "func_item": "FUNCTION_SENSOR_DIAG",
+        "params": {}
+      }
+    ],
+    "sensor": [
+      {
+        "sensor_type": "vision",
+        "sensor_item": [
+          {
+            "driver_name": "CAMERA_NVIDIA",
+            "driver_common_config": {
+              "platform_name": {
+                "DM0": "DM-12V1J_CPHY_x4",
+                "DM0K": "DM-12V1J_CPHY_x4",
+                "PT1.0": "DM-12V1J_CPHY_x4",
+                "PT1.1": "DM-12V1J_CPHY_x4",
+                "PT1.2": "DM-12V1J_CPHY_x4",
+                "PT1.2K": "PT12-12V1J_CPHY_x4",
+                "default": "DM-12V1J_CPHY_x4"
+              }
+            },
+            "nitro_path": "",
+            "driver_list": [1]
+          }
+        ]
+      },
+      {
+        "sensor_type": "lidar",
+        "sensor_item": [
+          {
+            "driver_name": "LIDAR_PANDAR128",
+            "driver_common_config": {},
+            "driver_list": [
+              {
+                "id": 128,
+                "sensor_name": "lidar",
+                "target_topic_name": "/hal/snapshot/pandar128_0/v2",
+                "out_freq": 100,
+                "attribute_type": "NA",
+                "params": {
+                  "target_ip": "192.168.1.201"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+}

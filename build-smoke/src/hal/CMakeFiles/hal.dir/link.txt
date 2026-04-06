@@ -1,0 +1,2 @@
+/usr/bin/ar qc libhal.a CMakeFiles/hal.dir/src/config/sensor_config_loader.cpp.o CMakeFiles/hal.dir/src/factory/sensor_factory.cpp.o CMakeFiles/hal.dir/src/runtime/hal_app_thread.cpp.o CMakeFiles/hal.dir/src/runtime/sensor_manager.cpp.o CMakeFiles/hal.dir/src/sensor/sensor_base.cpp.o CMakeFiles/hal.dir/src/sensor/sensor_types.cpp.o CMakeFiles/hal.dir/src/sensor/camera_sensor.cpp.o CMakeFiles/hal.dir/src/sensor/imu_sensor.cpp.o CMakeFiles/hal.dir/src/sensor/lidar_sensor.cpp.o CMakeFiles/hal.dir/src/runtime/hal_app_thread_std.cpp.o
+/usr/bin/ranlib libhal.a

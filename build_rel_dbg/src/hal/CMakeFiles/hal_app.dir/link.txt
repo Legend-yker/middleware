@@ -1,0 +1,1 @@
+/usr/bin/c++ -O2 -g -DNDEBUG CMakeFiles/hal_app.dir/src/app/main.cpp.o -o ../../bin/hal_app  ../../lib/libhal.a ../../lib/libdcms.a ../../lib/libhesai_sdk.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so 

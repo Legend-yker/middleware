@@ -1,0 +1,1 @@
+/usr/bin/c++ -O2 -g -DNDEBUG CMakeFiles/gdb_lab.dir/main.cpp.o -o ../../bin/gdb_lab 

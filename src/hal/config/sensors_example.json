@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "sensors": [
+    {
+      "id": "front_lidar",
+      "type": "lidar",
+      "driver": "pandar128",
+      "enabled": true,
+      "params": {
+        "model": "Pandar128",
+        "transport": "udp",
+        "ip": "192.168.1.201",
+        "port": 2368,
+        "gps_port": 10110,
+        "dual_return": false
+      }
+    },
+    {
+      "id": "rear_lidar",
+      "type": "lidar",
+      "driver": "airy",
+      "enabled": true,
+      "params": {
+        "model": "Airy-F1",
+        "transport": "udp",
+        "ip": "192.168.1.202",
+        "port": 2369,
+        "scan_mode": "single",
+        "rpm": 600
+      }
+    },
+    {
+      "id": "cam0",
+      "type": "camera",
+      "driver": "stub",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "imu0",
+      "type": "imu",
+      "driver": "stub",
+      "enabled": true,
+      "params": {}
+    },
+    {
+      "id": "gnss0",
+      "type": "gnss",
+      "driver": "stub",
+      "enabled": true,
+      "params": {
+        "protocol": "nmea",
+        "port": "/dev/ttyUSB0",
+        "baud_rate": 115200
+      }
+    },
+    {
+      "id": "odo0",
+      "type": "odo",
+      "driver": "stub",
+      "enabled": true,
+      "params": {
+        "interface": "can",
+        "ticks_per_rev": 1024,
+        "wheel_radius": 0.3
+      }
+    }
+  ]
+}

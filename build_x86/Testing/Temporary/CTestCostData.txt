@@ -1,0 +1,3 @@
+hal_sensor_smoke 1 0.260852
+dcms_smoke 1 0.0579695
+---

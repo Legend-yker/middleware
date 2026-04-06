@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "shm": {
+    "name": "dcms_shm",
+    "size_mb": 4
+  },
+  "ipc_backend": "unix_socket",
+  "queue_depth": 256,
+  "topics": [
+    { "name": "test_topic", "id": 1001 },
+    { "name": "imu_raw",    "id": 2001 },
+    { "name": "lidar_pts",  "id": 3001 }
+  ]
+}

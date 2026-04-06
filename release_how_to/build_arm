@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# ARM Linux 交叉编译（默认 triple: aarch64-linux-gnu，可用环境变量 ARM_TRIPLE 覆盖）
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+BUILD_DIR="${SCRIPT_DIR}/build-arm"
+BUILD_TYPE="${BUILD_TYPE:-Release}"
+JOBS="${JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)}"
+TOOLCHAIN="${REPO_ROOT}/cmake/toolchains/arm-linux.cmake"
+export ARM_TRIPLE="${ARM_TRIPLE:-aarch64-linux-gnu}"
+
+if ! command -v "${ARM_TRIPLE}-gcc" >/dev/null 2>&1; then
+    echo "[build_arm] ERROR: compiler not found: ${ARM_TRIPLE}-gcc" >&2
+    echo "[build_arm] Install the cross toolchain or set ARM_TRIPLE (e.g. arm-linux-gnueabihf)." >&2
+    exit 1
+fi
+
+echo "[build_arm] repo:     ${REPO_ROOT}"
+echo "[build_arm] out:      ${BUILD_DIR} (${BUILD_TYPE})"
+echo "[build_arm] triple:   ${ARM_TRIPLE}"
+echo "[build_arm] toolchain: ${TOOLCHAIN}"
+
+cmake -S "${REPO_ROOT}" -B "${BUILD_DIR}" \
+    -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+    -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN}" \
+    -DARM_TRIPLE="${ARM_TRIPLE}" \
+    "$@"
+
+cmake --build "${BUILD_DIR}" -j"${JOBS}"
+
+echo "[build_arm] done."
+echo "  bin: ${BUILD_DIR}/bin"
+echo "  lib: ${BUILD_DIR}/lib"

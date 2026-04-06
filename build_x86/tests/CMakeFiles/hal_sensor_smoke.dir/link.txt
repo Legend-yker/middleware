@@ -1,0 +1,1 @@
+/usr/bin/c++ -g CMakeFiles/hal_sensor_smoke.dir/hal_sensor_smoke.cpp.o -o ../bin/hal_sensor_smoke  ../lib/libhal.a ../lib/libdcms.a 

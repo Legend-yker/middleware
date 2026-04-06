@@ -1,0 +1,2 @@
+/usr/bin/ar qc libdcms.a CMakeFiles/dcms.dir/src/core/dcms_types.cpp.o CMakeFiles/dcms.dir/src/core/crc32.cpp.o CMakeFiles/dcms.dir/src/shm/buddy_allocator.cpp.o CMakeFiles/dcms.dir/src/shm/slab_allocator.cpp.o CMakeFiles/dcms.dir/src/shm/shm_pool.cpp.o CMakeFiles/dcms.dir/src/transport/ipc_backend.cpp.o CMakeFiles/dcms.dir/src/runtime/msg_queue.cpp.o CMakeFiles/dcms.dir/src/runtime/recv_thread.cpp.o CMakeFiles/dcms.dir/src/c_api/dcms_api.cpp.o CMakeFiles/dcms.dir/src/cpp_api/dcms.cpp.o CMakeFiles/dcms.dir/src/transport/unix_socket_backend.cpp.o
+/usr/bin/ranlib libdcms.a

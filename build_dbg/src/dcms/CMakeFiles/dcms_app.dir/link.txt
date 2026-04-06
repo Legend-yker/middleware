@@ -1,0 +1,1 @@
+/usr/bin/c++ -g CMakeFiles/dcms_app.dir/src/app/main.cpp.o -o ../../bin/dcms_app  ../../lib/libdcms.a 

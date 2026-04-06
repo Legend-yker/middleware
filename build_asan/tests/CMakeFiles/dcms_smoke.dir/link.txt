@@ -1,0 +1,1 @@
+/usr/bin/c++ -fsanitize=address -fno-omit-frame-pointer -g -fsanitize=address CMakeFiles/dcms_smoke.dir/dcms_smoke.cpp.o -o ../bin/dcms_smoke  ../lib/libdcms.a 
