@@ -35,6 +35,13 @@ public:
                 std::uint64_t timestamp_capture);
 
     const std::string &id() const { return id_; }
+
+    // 传感器实例日志（前缀含类型和 ID，例如 [MOD:hal][lidar:57]）
+    // 供 SLOG_* 宏在子类中调用
+    void slogDebug(const std::string &msg) const;
+    void slogInfo (const std::string &msg) const;
+    void slogWarn (const std::string &msg) const;
+    void slogError(const std::string &msg) const;
     SensorType type() const { return type_; }
     bool enabled() const { return enabled_; }
     bool running() const { return running_; }

@@ -1,5 +1,5 @@
-// 首版 stub：ShmPool 使用 malloc 模拟共享内存区域，
-// 真实 shm_open + mmap 后续迭代。
+// Stub implementation: ShmPool uses malloc to simulate the shared-memory
+// region.  Replace with shm_open + mmap in a future iteration.
 
 #include "shm/shm_pool.h"
 #include "shm/buddy_allocator.h"

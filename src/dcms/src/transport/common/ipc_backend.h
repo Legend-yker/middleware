@@ -20,6 +20,11 @@ public:
     virtual bool unsubscribeTopic(std::uint32_t topic) = 0;
     virtual bool usesSharedMemoryTransport() const = 0;
     virtual void shutdown() = 0;
+
+    // Release a buffer previously returned by recvNotify().
+    // The default implementation frees via ShmPool (correct for shared-memory
+    // transports). Backends that allocate privately must override this.
+    virtual void releaseRecvBuffer(void *ptr);
 };
 
 DCMS_API std::unique_ptr<IpcBackend> createIpcBackend();

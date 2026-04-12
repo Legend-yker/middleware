@@ -21,7 +21,7 @@ target_include_directories(hal
 target_compile_features(hal PUBLIC cxx_std_17)
 
 find_package(Threads REQUIRED)
-target_link_libraries(hal PUBLIC nlohmann_json::nlohmann_json Threads::Threads dcms)
+target_link_libraries(hal PUBLIC nlohmann_json::nlohmann_json Threads::Threads dcms dlog)
 
 # Sensor sub-modules (each adds its own sources via target_sources)
 add_subdirectory(src/sensor/camera)
@@ -38,3 +38,4 @@ target_compile_definitions(hal_app
     PRIVATE
         "HAL_DEFAULT_CONFIG_PATH=\"${HAL_DEFAULT_CONFIG_FILE}\""
 )
+middleware_set_module_output(hal_app hal)

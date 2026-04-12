@@ -2,6 +2,8 @@
 #include "api/publisher.h"
 #include "common/dcms_msg.h"
 #include "common/crc32.h"
+#include "dlog/dlog.h"
+#include "sensor/common/sensor_types.h"
 
 #include <functional>
 
@@ -60,6 +62,30 @@ int SensorBase::publish(const void *data, std::size_t len,
     meta.payload_crc32 = dcms::crc32(data, len);
 
     return publisher_->publish(meta, data, static_cast<std::uint32_t>(len));
+}
+
+// ---------------------------------------------------------------------------
+// 传感器日志辅助实现
+//
+// 前缀格式：[MOD:hal][lidar:57]
+//   - sensorTypeToString(type_) → "lidar" / "camera" / "imu" / ...
+//   - id_  → JSON 里读到的传感器 ID（如 "57" 或 "front_left"）
+// ---------------------------------------------------------------------------
+static std::string makeSlogPrefix(hal::SensorType t, const std::string &id) {
+    return std::string("[MOD:hal][") + sensorTypeToString(t) + ":" + id + "]";
+}
+
+void SensorBase::slogDebug(const std::string &msg) const {
+    dlog::log(dlog::Level::kDebug, makeSlogPrefix(type_, id_), msg);
+}
+void SensorBase::slogInfo(const std::string &msg) const {
+    dlog::log(dlog::Level::kInfo,  makeSlogPrefix(type_, id_), msg);
+}
+void SensorBase::slogWarn(const std::string &msg) const {
+    dlog::log(dlog::Level::kWarn,  makeSlogPrefix(type_, id_), msg);
+}
+void SensorBase::slogError(const std::string &msg) const {
+    dlog::log(dlog::Level::kError, makeSlogPrefix(type_, id_), msg);
 }
 
 } // namespace hal

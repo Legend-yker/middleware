@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 
 project(middleware LANGUAGES CXX C)
 
+# 生成 compile_commands.json，供 clangd / IntelliSense 做代码索引
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
@@ -10,6 +13,12 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
+function(middleware_set_module_output target module_name)
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/${module_name}"
+    )
+endfunction()
 
 add_subdirectory(src/dcms)
 add_subdirectory(src/hal)

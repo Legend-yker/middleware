@@ -1,4 +1,6 @@
-// 首版 stub：直接用 malloc/free，Slab 缓存池后续迭代填充。
+// Stub implementation: delegates to malloc/free.
+// Replace with a real Slab allocator (fixed-size object caching per type) in a
+// future iteration.
 
 #include "shm/slab_allocator.h"
 

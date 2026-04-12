@@ -1,19 +1,27 @@
 #include "factory/sensor_factory.h"
 #include "manager/sensor_manager.h"
+#include "sensor/lidar/common/lidar_base.h"
 #include "sensor/lidar/common/lidar_frame.h"
-
 #include "api/dcms.h"
-#include "api/subscriber.h"
-#include "common/dcms_msg.h"
+#include "common/crc32.h"
 #include "common/dcms_types.h"
+#include "dlog/dlog.h"
 
+#include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <csignal>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <netinet/in.h>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <vector>
+#include <unistd.h>
 
 #ifndef HAL_DEFAULT_CONFIG_PATH
 #define HAL_DEFAULT_CONFIG_PATH ""
@@ -23,102 +31,246 @@ namespace {
 std::atomic<bool> g_running{true};
 
 void onSignal(int /*sig*/) { g_running = false; }
+
+void enableBrokerDemoByDefault() {
+    if (std::getenv("DCMS_USE_BROKER") == nullptr)
+        ::setenv("DCMS_USE_BROKER", "1", 0);
+    if (std::getenv("DCMS_BROKER_SOCKET") == nullptr)
+        ::setenv("DCMS_BROKER_SOCKET", "/tmp/dcms_main.sock", 0);
+}
+
+struct DemoOptions {
+    bool enabled{false};
+    int duration_seconds{20};
+    int hz{2};
+};
+
+struct FakePandarPoint {
+    float x;
+    float y;
+    float z;
+    std::uint8_t intensity;
+    std::uint8_t ring;
+    std::uint16_t reserved;
+};
+
+struct FakePandarPacket {
+    std::uint32_t magic;
+    std::uint16_t version;
+    std::uint16_t point_count;
+    std::uint32_t frame_id;
+    std::uint64_t timestamp_us;
+    FakePandarPoint points[hal::LidarFrame::kMaxDemoPoints];
+    std::uint32_t payload_crc32;
+};
+
+constexpr std::uint32_t kFakePandarMagic = 0x50414E44u;
+constexpr std::uint16_t kFakePandarVersion = 1u;
+
+std::uint64_t nowUs() {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch())
+            .count());
+}
+
+FakePandarPacket buildPacket(std::uint32_t frame_id) {
+    FakePandarPacket packet{};
+    packet.magic = kFakePandarMagic;
+    packet.version = kFakePandarVersion;
+    packet.point_count = hal::LidarFrame::kMaxDemoPoints;
+    packet.frame_id = frame_id;
+    packet.timestamp_us = nowUs();
+
+    for (std::uint32_t i = 0; i < packet.point_count; ++i) {
+        packet.points[i].x = static_cast<float>(frame_id) + static_cast<float>(i) * 0.5f;
+        packet.points[i].y = static_cast<float>(i) * 2.0f;
+        packet.points[i].z = static_cast<float>(i) * 0.2f;
+        packet.points[i].intensity = static_cast<std::uint8_t>(30 + i);
+        packet.points[i].ring = static_cast<std::uint8_t>((frame_id + i) % 128u);
+    }
+
+    packet.payload_crc32 =
+        dcms::crc32(&packet, offsetof(FakePandarPacket, payload_crc32));
+    return packet;
+}
+
+void sendFakePackets(const std::string &sensor_id, std::uint16_t port,
+                     const DemoOptions &options, std::atomic<int> &pending_count) {
+    const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        pending_count.fetch_sub(1, std::memory_order_relaxed);
+        return;
+    }
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    const int total_packets = options.duration_seconds * options.hz;
+    const auto interval = std::chrono::milliseconds(1000 / options.hz);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    for (int i = 0; g_running.load(std::memory_order_relaxed) && i < total_packets; ++i) {
+        const auto packet = buildPacket(1000u + static_cast<std::uint32_t>(i));
+        const ssize_t sent = ::sendto(fd, &packet, sizeof(packet), 0,
+                                      reinterpret_cast<const sockaddr *>(&addr),
+                                      sizeof(addr));
+        if (sent != static_cast<ssize_t>(sizeof(packet))) {
+            DLOG_WARN("[MOD:hal_app]",
+                      "fake send failed sensor_id=" + sensor_id +
+                      " port=" + std::to_string(port));
+            break;
+        }
+
+        DLOG_INFO("[MOD:hal_app]",
+                  "fake send sensor_id=" + sensor_id +
+                  " frame_id=" + std::to_string(packet.frame_id) +
+                  " port=" + std::to_string(port) +
+                  " sent=" + std::to_string(i + 1) + "/" + std::to_string(total_packets));
+
+        std::this_thread::sleep_for(interval);
+    }
+
+    ::close(fd);
+    pending_count.fetch_sub(1, std::memory_order_relaxed);
+}
+
+bool parseArgs(int argc, char *argv[], std::string &config_path, DemoOptions &options) {
+    config_path = HAL_DEFAULT_CONFIG_PATH;
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg == "--demo-fake-lidar") {
+            options.enabled = true;
+            continue;
+        }
+        if (arg.rfind("--demo-seconds=", 0) == 0) {
+            options.duration_seconds = std::atoi(arg.substr(15).c_str());
+            continue;
+        }
+        if (arg.rfind("--demo-hz=", 0) == 0) {
+            options.hz = std::atoi(arg.substr(10).c_str());
+            continue;
+        }
+        config_path = arg;
+    }
+
+    if (options.duration_seconds <= 0)
+        options.duration_seconds = 20;
+    if (options.hz <= 0)
+        options.hz = 2;
+    return !config_path.empty();
+}
 } // namespace
 
 int main(int argc, char *argv[]) {
     (void)hal::SensorFactory::instance();
 
-    std::string config_path;
-    if (argc > 1)
-        config_path = argv[1];
-    else
-        config_path = HAL_DEFAULT_CONFIG_PATH;
+    // 日志系统最先初始化，写入 /tmp/hal_logs，每 10s 刷写一次
+    dlog::init("/tmp/hal_logs", 10, /*console_echo=*/true);
+    DLOG_INFO("[MOD:hal_app]", "hal_app starting");
 
-    if (config_path.empty()) {
-        std::cerr << "usage: hal_app <path-to-config.json>\n"
-                  << "or rebuild with -DHAL_DEFAULT_CONFIG_PATH=...\n";
+    std::string config_path;
+    DemoOptions demo_options;
+    if (!parseArgs(argc, argv, config_path, demo_options)) {
+        std::cerr << "usage: hal_app [config.json] [--demo-fake-lidar] "
+                  << "[--demo-seconds=20] [--demo-hz=2]\n";
+        dlog::shutdown();
         return EXIT_FAILURE;
     }
 
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
 
-    // --- Step 1: Initialize DCMS ---
+    enableBrokerDemoByDefault();
     int dcms_rc = dcms::init();
     if (dcms_rc != dcms::kDcmsOk) {
-        std::cerr << "[hal_app] dcms init failed: "
-                  << dcms::dcmsErrorToString(dcms_rc) << '\n';
+        DLOG_ERROR("[MOD:hal_app]",
+                   "dcms init failed: " + std::string(dcms::dcmsErrorToString(dcms_rc)));
+        dlog::shutdown();
         return EXIT_FAILURE;
     }
-    std::cout << "[hal_app] dcms initialized\n";
+    DLOG_INFO("[MOD:hal_app]", "dcms initialized");
 
-    // --- Step 2: Load HAL config and create sensor instances ---
     auto &mgr = hal::SensorManager::instance();
     std::string err;
 
     if (!mgr.loadFromJson(config_path, err)) {
-        std::cerr << "[hal_app] load config failed: " << err << '\n';
+        DLOG_ERROR("[MOD:hal_app]", "load config failed: " + err);
         dcms::shutdown();
+        dlog::shutdown();
         return EXIT_FAILURE;
     }
 
-    std::cout << "[hal_app] config: version=" << mgr.halJson().version()
-              << " mode=" << mgr.halJson().mode()
-              << " project=" << mgr.halJson().project() << '\n';
+    DLOG_INFO("[MOD:hal_app]",
+              "config: version=" + mgr.halJson().version() +
+              " mode=" + mgr.halJson().mode() +
+              " project=" + mgr.halJson().project());
 
-    std::cout << "[hal_app] sensors loaded: "
-              << "cameras=" << mgr.config().cameras().size()
-              << " lidars=" << mgr.config().lidars().size()
-              << " total=" << mgr.config().size() << '\n';
-
-    // --- Step 3: Subscribe to lidar topics before starting capture ---
-    std::atomic<int> frame_count{0};
-    std::vector<std::unique_ptr<dcms::Subscriber<hal::LidarFrame>>> lidar_subs;
+    DLOG_INFO("[MOD:hal_app]",
+              "sensors loaded:"
+              " cameras=" + std::to_string(mgr.config().cameras().size()) +
+              " lidars=" + std::to_string(mgr.config().lidars().size()) +
+              " total=" + std::to_string(mgr.config().size()));
 
     for (auto &lidar_ptr : mgr.config().lidars()) {
         std::uint32_t topic = lidar_ptr->topicId();
-        std::string sid = lidar_ptr->id();
-        std::cout << "[hal_app] subscribing lidar \"" << sid
-                  << "\" topic_id=0x" << std::hex << topic << std::dec << '\n';
-
-        lidar_subs.push_back(
-            std::make_unique<dcms::Subscriber<hal::LidarFrame>>(
-                topic,
-                [&frame_count, sid](const dcms::MsgMeta &meta,
-                                    const hal::LidarFrame &frame) {
-                    int cnt =
-                        frame_count.fetch_add(1, std::memory_order_relaxed) + 1;
-                    std::cout << "[hal_app] << " << sid
-                              << " frame_id=" << frame.frame_id
-                              << " pts=" << frame.num_points
-                              << " seq=" << meta.seq
-                              << " capture_ts=" << meta.timestamp_capture
-                              << " publish_ts=" << meta.timestamp_publish
-                              << " (total_recv=" << cnt << ")\n";
-                }));
+        char hex[16];
+        std::snprintf(hex, sizeof(hex), "%08X", topic);
+        DLOG_INFO("[MOD:hal_app]",
+                  "lidar ready id=" + lidar_ptr->id() +
+                  " topic_id=0x" + hex);
     }
 
-    // --- Step 4: Start all sensors (triggers Pandar128 UDP sim thread) ---
     if (!mgr.startAll(err)) {
-        std::cerr << "[hal_app] start sensors failed: " << err << '\n';
+        DLOG_ERROR("[MOD:hal_app]", "start sensors failed: " + err);
         dcms::shutdown();
+        dlog::shutdown();
         return EXIT_FAILURE;
     }
 
-    std::cout << "[hal_app] sensors started, running (SIGINT/SIGTERM to exit)\n";
+    std::atomic<int> demo_pending{0};
+    std::vector<std::thread> demo_threads;
+    if (demo_options.enabled) {
+        demo_pending.store(static_cast<int>(mgr.config().lidars().size()),
+                           std::memory_order_relaxed);
+        for (auto &lidar_ptr : mgr.config().lidars()) {
+            auto *lidar = dynamic_cast<hal::LidarBase *>(lidar_ptr.get());
+            if (!lidar) {
+                demo_pending.fetch_sub(1, std::memory_order_relaxed);
+                continue;
+            }
+            demo_threads.emplace_back(sendFakePackets,
+                                      lidar->id(),
+                                      lidar->dataPort(),
+                                      demo_options,
+                                      std::ref(demo_pending));
+        }
+        DLOG_INFO("[MOD:hal_app]",
+                  "fake lidar demo enabled:"
+                  " duration=" + std::to_string(demo_options.duration_seconds) +
+                  "s hz=" + std::to_string(demo_options.hz));
+    }
 
-    // --- Step 5: Main loop ---
-    while (g_running.load())
+    DLOG_INFO("[MOD:hal_app]", "sensors started");
+
+    while (g_running.load()) {
+        if (demo_options.enabled && demo_pending.load(std::memory_order_relaxed) == 0)
+            g_running = false;
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
 
-    // --- Cleanup ---
+    for (auto &demo_thread : demo_threads) {
+        if (demo_thread.joinable())
+            demo_thread.join();
+    }
+
     mgr.stopAll();
-    std::cout << "[hal_app] total lidar frames received via DCMS: "
-              << frame_count.load() << '\n';
-
-    lidar_subs.clear();
     dcms::shutdown();
 
-    std::cout << "[hal_app] stopped\n";
+    DLOG_INFO("[MOD:hal_app]", "stopped");
+    dlog::shutdown();
+
     return EXIT_SUCCESS;
 }

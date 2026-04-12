@@ -18,6 +18,7 @@ public:
     bool subscribeTopic(std::uint32_t topic) override;
     bool unsubscribeTopic(std::uint32_t topic) override;
     bool usesSharedMemoryTransport() const override;
+    void releaseRecvBuffer(void *ptr) override;
     void shutdown() override;
 
 private:
