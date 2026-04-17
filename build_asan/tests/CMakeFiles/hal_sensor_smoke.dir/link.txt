@@ -1,1 +1,0 @@
-/usr/bin/c++ -fsanitize=address -fno-omit-frame-pointer -g -fsanitize=address CMakeFiles/hal_sensor_smoke.dir/hal_sensor_smoke.cpp.o -o ../bin/hal_sensor_smoke  ../lib/libhal.a ../lib/libdcms.a ../lib/libhesai_sdk.a /usr/lib/x86_64-linux-gnu/libssl.so /usr/lib/x86_64-linux-gnu/libcrypto.so 

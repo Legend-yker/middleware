@@ -1,1 +1,0 @@
-/usr/bin/c++ -O2 -g -DNDEBUG CMakeFiles/dcms_smoke.dir/dcms_smoke.cpp.o -o ../bin/dcms_smoke  ../lib/libdcms.a 

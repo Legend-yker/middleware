@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/hal_app.dir/src/app/main.cpp.o -o hal_app  libhal.a 

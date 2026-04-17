@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/hal_sensor_smoke.dir/hal_sensor_smoke.cpp.o -o hal_sensor_smoke  ../src/hal/libhal.a 

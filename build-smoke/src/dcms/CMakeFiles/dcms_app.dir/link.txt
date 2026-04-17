@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG CMakeFiles/dcms_app.dir/src/app/main.cpp.o -o dcms_app  libdcms.a 
