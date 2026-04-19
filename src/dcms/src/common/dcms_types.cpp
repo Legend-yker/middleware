@@ -22,6 +22,10 @@ const char *dcmsErrorToString(int err) {
         return "timeout";
     case kDcmsErrNoSubscriber:
         return "no subscriber";
+    case kDcmsErrDaemonNotFound:
+        return "daemon not found";
+    case kDcmsErrTopicExists:
+        return "topic already exists";
     default:
         return "unknown error";
     }

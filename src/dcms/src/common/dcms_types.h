@@ -24,7 +24,9 @@ enum DcmsError : int {
     kDcmsErrInvalidArg = -5,
     kDcmsErrCrcMismatch = -6,
     kDcmsErrTimeout = -7,
-    kDcmsErrNoSubscriber = -8,
+    kDcmsErrNoSubscriber    = -8,
+    kDcmsErrDaemonNotFound  = -9,
+    kDcmsErrTopicExists     = -10,
 };
 
 DCMS_API const char *dcmsErrorToString(int err);

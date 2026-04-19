@@ -2,6 +2,7 @@
 
 #include "hal_export.h"
 #include "sensor/common/sensor_base.h"
+#include "sensor/lidar/common/lidar_frame.h"
 
 #include <cstdint>
 #include <string>
@@ -12,6 +13,8 @@ class HAL_API LidarBase : public SensorBase {
 public:
     explicit LidarBase();
     ~LidarBase() override;
+
+    std::uint32_t payloadSize() const override { return sizeof(LidarFrame); }
 
     const std::string &model() const { return model_; }
     const std::string &transport() const { return transport_; }

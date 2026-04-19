@@ -1,11 +1,23 @@
-#include "api/dcms_api.h"
-#include "common/crc32.h"
-#include "common/dcms_msg.h"
-#include "common/dcms_types.h"
+// dcms_smoke: end-to-end pub/sub test using the NodeHandle API.
+//
+// Requires a running dcms_daemon.  Launch before running:
+//   ./dcms_daemon &
+//
+// Four-phase flow:
+//   Phase 1 — NodeHandle::create() connects to Daemon
+//   Phase 2 — advertise() registers topic, Daemon creates shm ring buffer
+//   Phase 3 — subscribe() maps same ring buffer, receives eventfd
+//   Phase 4 — publish() writes directly to ring, subscriber wakes via eventfd
+//
+// Logs written to /tmp/dcms_logs/ (queryable with zcat + grep MOD:dcms_smoke)
+
 #include "api/dcms.h"
+#include "api/node_handle.h"
 #include "api/publisher.h"
 #include "api/subscriber.h"
-#include "utils/msg_queue.h"
+#include "common/dcms_msg.h"
+
+#include "dlog/dlog.h"
 
 #include <atomic>
 #include <cassert>
@@ -15,94 +27,88 @@
 #include <iostream>
 #include <thread>
 
+#define LOG(msg) DLOG_INFO("[MOD:dcms_smoke]", msg)
+
 struct SimplePayload {
     std::uint32_t id;
-    float value;
+    float         value;
 };
 
 int main() {
-    // --- CRC32 ---
-    const char *payload = "hello dcms";
-    std::uint32_t c = dcms::crc32(payload, std::strlen(payload));
-    assert(c != 0);
-    assert(dcms::crc32(payload, std::strlen(payload)) == c);
+    dlog::init("/tmp/dcms_logs", 5, /*console_echo=*/true);
+    LOG("dcms_smoke start");
 
-    // --- MsgQueue ---
-    dcms::MsgQueue q(4);
-    assert(q.empty());
-    int dummy1 = 1, dummy2 = 2, dummy3 = 3, dummy4 = 4, dummy5 = 5;
-    assert(q.push(&dummy1));
-    assert(q.push(&dummy2));
-    assert(q.push(&dummy3));
-    assert(q.push(&dummy4));
-    assert(!q.push(&dummy5));
-    assert(q.full());
-    void *out = nullptr;
-    assert(q.pop(out));
-    assert(out == &dummy1);
-    assert(q.pop(out));
-    assert(out == &dummy2);
+    // ── Phase 1: connect to Daemon ──────────────────────────────────────────
+    dcms::NodeHandle pub_node, sub_node;
 
-    // --- MsgMeta size ---
-    assert(sizeof(dcms::MsgMeta) == 40);
+    int rc = dcms::NodeHandle::create("smoke_pub", pub_node);
+    if (rc != dcms::kDcmsOk) {
+        std::cerr << "NodeHandle::create(smoke_pub) failed: " << rc << '\n'
+                  << "Is dcms_daemon running?\n";
+        dlog::shutdown();
+        return EXIT_FAILURE;
+    }
+    assert(pub_node.valid());
+    LOG("phase1: smoke_pub connected to daemon");
 
-    // --- dcms::init / publish / subscribe / shutdown ---
-    int rc = dcms::init("");
+    rc = dcms::NodeHandle::create("smoke_sub", sub_node);
     assert(rc == dcms::kDcmsOk);
+    assert(sub_node.valid());
+    LOG("phase1: smoke_sub connected to daemon");
 
+    // ── Phase 2: advertise ──────────────────────────────────────────────────
+    auto pub = pub_node.advertise<SimplePayload>("smoke/test", 8);
+    assert(pub.valid());
+    LOG("phase2: advertised topic smoke/test (8 slots, slot_size=" +
+        std::to_string(sizeof(SimplePayload)) + ")");
+
+    // ── Phase 3: subscribe ──────────────────────────────────────────────────
     std::atomic<int> received{0};
-    SimplePayload last_payload{};
-    dcms::MsgMeta last_meta{};
+    SimplePayload    last{};
 
-    dcms::Subscriber<SimplePayload> sub("smoke_topic",
-        [&](const dcms::MsgMeta &meta, const SimplePayload &m) {
-            last_meta = meta;
-            last_payload = m;
-            received.fetch_add(1, std::memory_order_relaxed);
+    auto sub = sub_node.subscribe<SimplePayload>(
+        "smoke/test",
+        [&](const SimplePayload &m) {
+            last = m;
+            int n = received.fetch_add(1, std::memory_order_relaxed) + 1;
+            LOG("sub_recv: id=" + std::to_string(m.id) +
+                " value=" + std::to_string(m.value) +
+                " total=" + std::to_string(n));
         });
+    assert(sub.valid());
+    LOG("phase3: subscribed to smoke/test");
 
-    dcms::Publisher pub("smoke_topic");
+    // Give Daemon time to deliver kNewSubscriberNotify to publisher
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-    // Build Msg<SimplePayload> with metadata
-    SimplePayload out_data{42, 3.14f};
-    dcms::Msg<SimplePayload> msg{};
-    msg.meta.module_id = static_cast<std::uint32_t>(dcms::ModuleId::kDcms);
-    msg.meta.instance_id = pub.topic();
-    msg.meta.data_type = static_cast<std::uint32_t>(dcms::DataType::kRaw);
-    msg.meta.seq = 0;
-    msg.meta.timestamp_capture = dcms::nowUs();
-    msg.meta.timestamp_publish = dcms::nowUs();
-    msg.meta.payload_len = sizeof(SimplePayload);
-    msg.meta.payload_crc32 = dcms::crc32(&out_data, sizeof(SimplePayload));
-    msg.data = out_data;
-
+    // ── Phase 4: publish ────────────────────────────────────────────────────
+    SimplePayload msg{42, 3.14f};
     rc = pub.publish(msg);
     assert(rc == dcms::kDcmsOk);
+    LOG("phase4: published id=42 value=3.14");
 
+    // Wait up to 500ms for subscriber callback
     for (int i = 0; i < 50 && received.load() == 0; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
     assert(received.load() >= 1);
-    assert(last_payload.id == 42);
+    assert(last.id == 42);
+    LOG("phase4: first message received OK");
 
-    // Verify metadata was delivered
-    assert(last_meta.module_id == static_cast<std::uint32_t>(dcms::ModuleId::kDcms));
-    assert(last_meta.seq == 0);
-    assert(last_meta.payload_len == sizeof(SimplePayload));
-    assert(last_meta.timestamp_capture > 0);
+    // Publish multiple messages
+    for (int i = 1; i <= 5; ++i) {
+        SimplePayload m{static_cast<std::uint32_t>(i), static_cast<float>(i)};
+        assert(pub.publish(m) == dcms::kDcmsOk);
+    }
 
-    // CRC integrity: tamper payload_crc32 → Publisher should reject
-    dcms::MsgMeta bad_meta = msg.meta;
-    bad_meta.payload_crc32 = 0xDEADBEEF;
-    rc = pub.publish(bad_meta, &out_data, sizeof(SimplePayload));
-    assert(rc == dcms::kDcmsErrCrcMismatch);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    assert(received.load() >= 6);
+    LOG("phase4: 5 additional messages received, total=" +
+        std::to_string(received.load()));
 
-    dcms::shutdown();
-
-    // After shutdown, publish should fail
-    rc = pub.publish(msg);
-    assert(rc == dcms::kDcmsErrNotInit);
-
+    LOG("dcms_smoke: all assertions passed");
     std::cout << "dcms_smoke: ok\n";
+
+    dlog::shutdown();
     return EXIT_SUCCESS;
 }

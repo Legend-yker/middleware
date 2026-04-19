@@ -1,18 +1,15 @@
-set(DCMS_IPC_BACKEND "UNIX_SOCKET" CACHE STRING "DCMS IPC backend: UNIX_SOCKET or QNX_PULSE")
-set_property(CACHE DCMS_IPC_BACKEND PROPERTY STRINGS UNIX_SOCKET QNX_PULSE)
-
 add_library(dcms STATIC
     src/common/dcms_types.cpp
     src/common/crc32.cpp
     src/shm/buddy_allocator.cpp
     src/shm/slab_allocator.cpp
     src/shm/shm_pool.cpp
-    src/transport/common/ipc_backend.cpp
+    src/shm/ring_buffer.cpp
     src/utils/msg_queue.cpp
-    src/manager/recv_thread.cpp
-    src/api/dcms_api.cpp
     src/api/dcms.cpp
     src/api/publisher.cpp
+    src/api/node_handle.cpp
+    src/daemon/daemon.cpp      # 集成测试可在同进程实例化 Daemon
 )
 
 target_include_directories(dcms
@@ -23,18 +20,19 @@ target_include_directories(dcms
 
 target_compile_features(dcms PUBLIC cxx_std_17)
 
+find_package(Threads REQUIRED)
+target_link_libraries(dcms PUBLIC Threads::Threads rt dlog)
+
+# QNX Pulse backend: kept but not compiled on Linux
+set(DCMS_IPC_BACKEND "LINUX" CACHE STRING "DCMS IPC backend (LINUX or QNX_PULSE)")
 if(DCMS_IPC_BACKEND STREQUAL "QNX_PULSE")
-    target_compile_definitions(dcms PUBLIC DCMS_IPC_QNX_PULSE=1)
-    target_sources(dcms PRIVATE src/transport/qnx_pulse/qnx_pulse_backend.cpp)
-else()
-    target_compile_definitions(dcms PUBLIC DCMS_IPC_UNIX_SOCKET=1)
-    target_sources(dcms PRIVATE src/transport/unix_socket/unix_socket_backend.cpp)
+    message(WARNING "QNX_PULSE backend not yet ported to the new Daemon architecture")
 endif()
 
-find_package(Threads REQUIRED)
-target_link_libraries(dcms PUBLIC Threads::Threads)
-
-add_executable(dcms_app src/app/main.cpp)
-target_link_libraries(dcms_app PRIVATE dcms)
-target_compile_features(dcms_app PRIVATE cxx_std_17)
-middleware_set_module_output(dcms_app dcms)
+add_executable(dcms_daemon
+    src/app/main.cpp
+    src/daemon/daemon.cpp
+)
+target_link_libraries(dcms_daemon PRIVATE dcms dlog)
+target_compile_features(dcms_daemon PRIVATE cxx_std_17)
+middleware_set_module_output(dcms_daemon dcms)

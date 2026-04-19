@@ -1,7 +1,6 @@
 #include "sensor/lidar/lidar_pandar128/pandar128_driver.h"
 #include "sensor/lidar/common/lidar_frame.h"
 #include "common/crc32.h"
-#include "common/dcms_msg.h"
 #include "hal_log.h"          // ← SLOG_* 宏
 
 #include <arpa/inet.h>
@@ -214,8 +213,7 @@ void Pandar128Driver::udpRecvLoop() {
         }
 
         // 流程 5：把解析后的 LidarFrame 发布到 DCMS。
-        const int rc = publish(&frame, sizeof(frame),
-                               dcms::DataType::kLidarFrame, frame.timestamp_us);
+        const int rc = publish(&frame, sizeof(frame));
         if (rc == 0) {
             ++frame_seq_;
             SLOG_DEBUG("published frame_id=" + std::to_string(frame.frame_id) +

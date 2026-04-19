@@ -4,14 +4,13 @@
 #include "sensor/lidar/lidar_pandar128/pandar128_driver.h"
 
 #include "api/dcms.h"
+#include "api/node_handle.h"
 #include "api/subscriber.h"
 #include "common/crc32.h"
-#include "common/dcms_msg.h"
 #include "common/dcms_types.h"
 
 #include <arpa/inet.h>
 #include <atomic>
-#include <cassert>
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
@@ -30,10 +29,10 @@
 
 namespace {
 
-constexpr std::uint32_t kFakePandarMagic = 0x50414E44u;
+constexpr std::uint32_t kFakePandarMagic   = 0x50414E44u;
 constexpr std::uint16_t kFakePandarVersion = 1u;
-constexpr std::uint32_t kBaseFrameId = 100u;
-constexpr int kPacketsToSend = 3;
+constexpr std::uint32_t kBaseFrameId       = 100u;
+constexpr int           kPacketsToSend     = 3;
 
 struct FakePandarPoint {
     float x;
@@ -55,10 +54,9 @@ struct FakePandarPacket {
 };
 
 struct ReceivedState {
-    std::mutex mutex;
-    dcms::MsgMeta meta{};
+    std::mutex      mutex;
     hal::LidarFrame frame{};
-    int count{0};
+    int             count{0};
 };
 
 static_assert(sizeof(FakePandarPoint) == 16);
@@ -72,20 +70,19 @@ std::uint64_t nowUs() {
 
 FakePandarPacket buildPacket(std::uint32_t frame_id) {
     FakePandarPacket packet{};
-    packet.magic = kFakePandarMagic;
-    packet.version = kFakePandarVersion;
+    packet.magic       = kFakePandarMagic;
+    packet.version     = kFakePandarVersion;
     packet.point_count = hal::LidarFrame::kMaxDemoPoints;
-    packet.frame_id = frame_id;
+    packet.frame_id    = frame_id;
     packet.timestamp_us = nowUs();
 
     for (std::uint32_t i = 0; i < packet.point_count; ++i) {
-        packet.points[i].x = static_cast<float>(frame_id) + static_cast<float>(i) * 0.25f;
-        packet.points[i].y = static_cast<float>(i) * 1.5f;
-        packet.points[i].z = -static_cast<float>(i) * 0.1f;
+        packet.points[i].x         = static_cast<float>(frame_id) + static_cast<float>(i) * 0.25f;
+        packet.points[i].y         = static_cast<float>(i) * 1.5f;
+        packet.points[i].z         = -static_cast<float>(i) * 0.1f;
         packet.points[i].intensity = static_cast<std::uint8_t>(20 + i);
-        packet.points[i].ring = static_cast<std::uint8_t>((frame_id + i) % 128);
+        packet.points[i].ring      = static_cast<std::uint8_t>((frame_id + i) % 128);
     }
-
     packet.payload_crc32 =
         dcms::crc32(&packet, offsetof(FakePandarPacket, payload_crc32));
     return packet;
@@ -93,25 +90,24 @@ FakePandarPacket buildPacket(std::uint32_t frame_id) {
 
 void sendFakePackets(std::uint16_t port) {
     int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
-    if (fd < 0)
-        return;
+    if (fd < 0) return;
 
     sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
+    addr.sin_family      = AF_INET;
+    addr.sin_port        = htons(port);
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     for (int i = 0; i < kPacketsToSend; ++i) {
-        const FakePandarPacket packet = buildPacket(kBaseFrameId + static_cast<std::uint32_t>(i));
-        const ssize_t sent = ::sendto(fd, &packet, sizeof(packet), 0,
-                                      reinterpret_cast<const sockaddr *>(&addr),
-                                      sizeof(addr));
+        const FakePandarPacket packet =
+            buildPacket(kBaseFrameId + static_cast<std::uint32_t>(i));
+        const ssize_t sent =
+            ::sendto(fd, &packet, sizeof(packet), 0,
+                     reinterpret_cast<const sockaddr *>(&addr), sizeof(addr));
         if (sent != static_cast<ssize_t>(sizeof(packet)))
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(40));
     }
-
     ::close(fd);
 }
 
@@ -125,7 +121,7 @@ int main() {
 
     (void)hal::SensorFactory::instance();
 
-    int dcms_rc = dcms::init();
+    int dcms_rc = dcms::init("hal_smoke");
     if (dcms_rc != dcms::kDcmsOk)
         return fail("dcms init failed rc=" + std::to_string(dcms_rc));
 
@@ -145,14 +141,15 @@ int main() {
         return fail("unexpected config layout");
     }
 
-    const auto *pandar = dynamic_cast<const hal::Pandar128Driver *>(
-        cfg.lidars()[0].get());
+    const auto *pandar =
+        dynamic_cast<const hal::Pandar128Driver *>(cfg.lidars()[0].get());
     if (pandar == nullptr) {
         mgr.clear();
         dcms::shutdown();
         return fail("pandar driver cast failed");
     }
-    if (pandar->ip() != "192.168.1.201" || pandar->dataPort() != 2368 || cfg.get("128") == nullptr) {
+    if (pandar->ip() != "192.168.1.201" || pandar->dataPort() != 2368 ||
+        cfg.get("128") == nullptr) {
         mgr.clear();
         dcms::shutdown();
         return fail("pandar config mismatch");
@@ -164,32 +161,24 @@ int main() {
         return fail("hal json header mismatch");
     }
 
-    std::atomic<int> received{0};
-    std::atomic<bool> callback_failed{false};
-    ReceivedState state{};
-    std::uint32_t lidar_topic = cfg.lidars()[0]->topicId();
-    if (lidar_topic == 0) {
+    const std::string topic_name = cfg.lidars()[0]->id();
+    if (topic_name.empty()) {
         mgr.clear();
         dcms::shutdown();
-        return fail("invalid lidar topic");
+        return fail("invalid lidar sensor id");
     }
 
+    std::atomic<int> received{0};
+    ReceivedState    state{};
+
     {
-        dcms::Subscriber<hal::LidarFrame> sub(
-            lidar_topic, [&](const dcms::MsgMeta &meta, const hal::LidarFrame &frame) {
+        auto sub = dcms::defaultNode().subscribe<hal::LidarFrame>(
+            topic_name, [&](const hal::LidarFrame &frame) {
                 const bool valid =
-                    frame.num_points == hal::LidarFrame::kMaxDemoPoints &&
-                    meta.module_id == static_cast<std::uint32_t>(dcms::ModuleId::kHal) &&
-                    meta.data_type == static_cast<std::uint32_t>(dcms::DataType::kLidarFrame) &&
-                    meta.timestamp_capture > 0 &&
-                    meta.payload_crc32 != 0;
-                if (!valid) {
-                    callback_failed.store(true, std::memory_order_relaxed);
-                    return;
-                }
+                    frame.num_points == hal::LidarFrame::kMaxDemoPoints;
+                if (!valid) return;
 
                 std::lock_guard<std::mutex> lk(state.mutex);
-                state.meta = meta;
                 state.frame = frame;
                 state.count += 1;
                 received.store(state.count, std::memory_order_relaxed);
@@ -203,25 +192,24 @@ int main() {
 
         std::thread sender([&] { sendFakePackets(pandar->dataPort()); });
 
-        for (int i = 0; i < 200 && received.load(std::memory_order_relaxed) < kPacketsToSend; ++i)
+        for (int i = 0;
+             i < 200 && received.load(std::memory_order_relaxed) < kPacketsToSend;
+             ++i)
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
         sender.join();
         mgr.stopAll();
     }
 
-    if (callback_failed.load(std::memory_order_relaxed) ||
-        received.load(std::memory_order_relaxed) != kPacketsToSend) {
+    if (received.load(std::memory_order_relaxed) != kPacketsToSend) {
         mgr.clear();
         dcms::shutdown();
         return fail("did not receive expected fake UDP frames");
     }
 
-    dcms::MsgMeta last_meta{};
     hal::LidarFrame last_frame{};
     {
         std::lock_guard<std::mutex> lk(state.mutex);
-        last_meta = state.meta;
         last_frame = state.frame;
         if (state.count != kPacketsToSend) {
             mgr.clear();
@@ -230,15 +218,15 @@ int main() {
         }
     }
 
-    if (last_meta.seq != static_cast<std::uint64_t>(kPacketsToSend - 1) ||
-        last_meta.payload_len != sizeof(hal::LidarFrame) ||
-        last_frame.frame_id != kBaseFrameId + static_cast<std::uint32_t>(kPacketsToSend - 1) ||
-        last_frame.points[0].x != static_cast<float>(last_frame.frame_id) ||
+    const std::uint32_t expected_frame_id =
+        kBaseFrameId + static_cast<std::uint32_t>(kPacketsToSend - 1);
+    if (last_frame.frame_id != expected_frame_id ||
+        last_frame.points[0].x != static_cast<float>(expected_frame_id) ||
         last_frame.points[1].y != 1.5f ||
         last_frame.points[2].z != -0.2f ||
         last_frame.points[3].intensity != 23 ||
         last_frame.points[4].ring !=
-            static_cast<std::uint8_t>((last_frame.frame_id + 4u) % 128u)) {
+            static_cast<std::uint8_t>((expected_frame_id + 4u) % 128u)) {
         mgr.clear();
         dcms::shutdown();
         return fail("decoded frame content mismatch");
@@ -247,8 +235,8 @@ int main() {
     mgr.clear();
     dcms::shutdown();
 
-    std::cout << "hal_sensor_smoke: ok (received " << received.load(std::memory_order_relaxed)
-              << " lidar frames via fake UDP -> HAL -> DCMS, last_seq=" << last_meta.seq
-              << ")\n";
+    std::cout << "hal_sensor_smoke: ok (received "
+              << received.load(std::memory_order_relaxed)
+              << " lidar frames via fake UDP -> HAL -> DCMS)\n";
     return EXIT_SUCCESS;
 }
