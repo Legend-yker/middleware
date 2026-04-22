@@ -152,32 +152,53 @@ bool Daemon::bindListenSocket() {
 
 void Daemon::acceptLoop() {
     constexpr int kMaxEvents = 64;
-    epoll_event   events[kMaxEvents];
+    epoll_event   events[kMaxEvents]; // 每次 epoll_wait 最多返回 64 个就绪事件
 
+    // running_ 由 stop() 置 false，循环最多再等 200ms 就会退出
     while (running_.load(std::memory_order_relaxed)) {
+
+        // 阻塞等待，最多 200ms；超时返回 0，有事件返回事件数，出错返回 -1
         int n = ::epoll_wait(epoll_fd_, events, kMaxEvents, 200 /*ms*/);
         if (n < 0) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR) continue; // 被信号打断，不是真正出错，重试
             std::perror("epoll_wait");
             break;
         }
+
+        // 遍历本轮所有就绪的 fd
         for (int i = 0; i < n; ++i) {
-            int fd = events[i].data.fd;
+            int fd = events[i].data.fd; // 取出就绪的 fd（init 时通过 ev.data.fd 存入）
+
             if (fd == listen_fd_) {
+                // ── 情况1：监听 socket 可读 → 有新进程来连接 ──────────────────
+                // accept4 比 accept 多两个 flag：
+                //   SOCK_CLOEXEC  : fork 后子进程不继承此 fd
+                //   SOCK_NONBLOCK : 新连接设为非阻塞，配合 EPOLLET 使用
                 int cfd = ::accept4(listen_fd_, nullptr, nullptr,
                                     SOCK_CLOEXEC | SOCK_NONBLOCK);
-                if (cfd < 0) continue;
+                if (cfd < 0) continue; // accept 失败（如系统 fd 耗尽），跳过
 
+                // 把新连接加入 epoll 监听
                 epoll_event cev{};
-                cev.events  = EPOLLIN | EPOLLET | EPOLLHUP | EPOLLERR;
-                cev.data.fd = cfd;
+                cev.events  = EPOLLIN   // 有数据可读（NodeHandle 发来控制消息）
+                            | EPOLLET   // 边缘触发：只通知一次，必须在 handleClientReadable 里把数据读干净
+                            | EPOLLHUP  // 对端关闭连接
+                            | EPOLLERR; // socket 出错
+                cev.data.fd = cfd;      // 事件触发时通过 events[i].data.fd 找回这个 fd
                 ::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, cfd, &cev);
 
+                // 记录客户端信息（pid/node_id 等待后续 NodeRegisterReq 填写）
                 std::lock_guard<std::mutex> lk(clients_mutex_);
                 clients_[cfd] = ClientInfo{cfd, 0, 0, ""};
+
             } else if (events[i].events & (EPOLLHUP | EPOLLERR)) {
+                // ── 情况2：客户端断开或出错 ────────────────────────────────────
+                // 清理该客户端发布的 topic（shm_unlink）和持有的 eventfd dup 副本
                 handleClientDisconnect(fd);
+
             } else if (events[i].events & EPOLLIN) {
+                // ── 情况3：客户端发来控制消息（Register / Advertise / Subscribe）
+                // 内部循环读完所有积压消息（EPOLLET 边缘触发要求必须读干净）
                 handleClientReadable(fd);
             }
         }
