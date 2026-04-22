@@ -6,6 +6,7 @@ add_library(dcms STATIC
     src/shm/shm_pool.cpp
     src/shm/ring_buffer.cpp
     src/utils/msg_queue.cpp
+    src/utils/dcms_thread.cpp
     src/api/dcms.cpp
     src/api/publisher.cpp
     src/api/node_handle.cpp

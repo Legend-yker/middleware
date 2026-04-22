@@ -17,17 +17,12 @@ public:
 protected:
     bool doInitParams(const nlohmann::json &configEntry) override;
     bool doStartCapture() override;
-    void doStopCapture() override;
+    int  doStopCapture() override;
 
 private:
-    // 1) UDP 虽然是无连接协议，但接收端仍然需要 socket + bind 才能监听端口。
-    // 2) 这里拆成 open/close 两个函数，是为了让启动、停止、异常处理的资源释放更清晰。
     bool openSocket();
-    void closeSocket();
-
-    // 3) 后台接收线程主循环：
-    //    fake UDP 包 -> 解析成 LidarFrame -> 发布到 DCMS
-    void udpRecvLoop();
+    int  closeSocket();
+    int  udpRecvLoop();
 
     std::uint16_t gps_port_{10110};
     bool dual_return_{false};

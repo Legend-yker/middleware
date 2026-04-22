@@ -31,10 +31,10 @@ bool LidarBase::start() {
     return doStartCapture();
 }
 
-void LidarBase::stop() {
+int LidarBase::stop() {
     if (running())
         doStopCapture();
-    SensorBase::stop();
+    return SensorBase::stop();
 }
 
 } // namespace hal

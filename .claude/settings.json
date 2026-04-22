@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Bash(*)"
+    ],
+    "deny": [
+      "Bash(rm *)",
+      "Bash(rm -rf *)",
+      "Bash(sudo rm *)"
+    ],
+    "additionalDirectories": [
+      "/home/dji/car1609/middleware/.claude"
+    ]
+  }
+}

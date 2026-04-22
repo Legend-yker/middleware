@@ -27,9 +27,10 @@ bool AiryDriver::doStartCapture() {
     return true;
 }
 
-void AiryDriver::doStopCapture() {
+int AiryDriver::doStopCapture() {
     std::cout << "[Airy] stop capture\n";
     // TODO: call sdk_core stop
+    return 0;
 }
 
 } // namespace hal

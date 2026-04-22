@@ -3,7 +3,7 @@ hal_setup_nlohmann_json()
 
 add_library(hal STATIC
     src/utils/config.cpp
-    src/utils/thread.cpp
+    src/utils/hal_thread.cpp
     src/utils/hal_json.cpp
     src/factory/sensor_factory.cpp
     src/manager/config.cpp

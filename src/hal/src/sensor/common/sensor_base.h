@@ -23,17 +23,17 @@ public:
     bool initFromConfigEntry(const nlohmann::json &item);
 
     virtual bool start();
-    virtual void stop();
+    virtual int  stop();
 
     // Publish raw payload into the ring buffer.
     int publish(const void *data, std::size_t len);
 
     const std::string &id() const { return id_; }
 
-    void slogDebug(const std::string &msg) const;
-    void slogInfo (const std::string &msg) const;
-    void slogWarn (const std::string &msg) const;
-    void slogError(const std::string &msg) const;
+    int slogDebug(const std::string &msg) const;
+    int slogInfo (const std::string &msg) const;
+    int slogWarn (const std::string &msg) const;
+    int slogError(const std::string &msg) const;
 
     SensorType    type()    const { return type_; }
     bool          enabled() const { return enabled_; }

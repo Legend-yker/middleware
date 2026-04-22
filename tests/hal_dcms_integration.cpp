@@ -71,7 +71,8 @@ int main() {
 
     // ── 1. 在线程里启动 Daemon（非独立进程，共享 Logger）─────────────────────────
     dcms::Daemon daemon;
-    std::thread daemon_thread([&daemon] { daemon.run(); });
+    assert(daemon.init());
+    daemon.start();
     std::this_thread::sleep_for(std::chrono::milliseconds(100)); // 等 epoll 就绪
     DLOG_INFO("[MOD:integration]", "daemon thread started");
 
@@ -188,7 +189,6 @@ int main() {
 
     // ── 10. 优雅关闭 ──────────────────────────────────────────────────────────
     daemon.stop();
-    daemon_thread.join();
     DLOG_INFO("[MOD:integration]", "daemon stopped");
 
     // shutdown 强制冲刷所有缓冲（所有模块的日志都在这一次写入同一个文件）

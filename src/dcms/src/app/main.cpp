@@ -26,14 +26,19 @@ int main() {
     DAEMON_LOGI("starting on " + std::string(dcms::kDaemonSocketPath));
 
     dcms::Daemon daemon;
-    std::thread t([&daemon] { daemon.run(); });
+    if (!daemon.init()) {
+        DAEMON_LOGE("init failed");
+        dlog::shutdown();
+        return 1;
+    }
+
+    daemon.start();
 
     while (g_running.load(std::memory_order_relaxed))
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     DAEMON_LOGI("shutting down");
     daemon.stop();
-    t.join();
 
     dlog::shutdown();
     return 0;

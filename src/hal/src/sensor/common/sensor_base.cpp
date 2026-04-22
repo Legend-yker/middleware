@@ -23,7 +23,6 @@ bool SensorBase::initFromConfigEntry(const nlohmann::json &item) {
     topic_id_ = static_cast<std::uint32_t>(std::hash<std::string>{}(id_));
     enabled_  = item.value("enabled", true);
 
-    // Create publisher if this sensor type provides a frame size.
     const std::uint32_t sz = payloadSize();
     if (sz > 0 && dcms::defaultNode().valid())
         publisher_ = dcms::defaultNode().advertise_raw(id_, sz);
@@ -38,7 +37,10 @@ bool SensorBase::start() {
     return true;
 }
 
-void SensorBase::stop() { running_ = false; }
+int SensorBase::stop() {
+    running_ = false;
+    return 0;
+}
 
 int SensorBase::publish(const void *data, std::size_t len) {
     if (!publisher_.valid())
@@ -50,17 +52,21 @@ static std::string makeSlogPrefix(hal::SensorType t, const std::string &id) {
     return std::string("[MOD:hal][") + sensorTypeToString(t) + ":" + id + "]";
 }
 
-void SensorBase::slogDebug(const std::string &msg) const {
+int SensorBase::slogDebug(const std::string &msg) const {
     dlog::log(dlog::Level::kDebug, makeSlogPrefix(type_, id_), msg);
+    return 0;
 }
-void SensorBase::slogInfo(const std::string &msg) const {
+int SensorBase::slogInfo(const std::string &msg) const {
     dlog::log(dlog::Level::kInfo,  makeSlogPrefix(type_, id_), msg);
+    return 0;
 }
-void SensorBase::slogWarn(const std::string &msg) const {
+int SensorBase::slogWarn(const std::string &msg) const {
     dlog::log(dlog::Level::kWarn,  makeSlogPrefix(type_, id_), msg);
+    return 0;
 }
-void SensorBase::slogError(const std::string &msg) const {
+int SensorBase::slogError(const std::string &msg) const {
     dlog::log(dlog::Level::kError, makeSlogPrefix(type_, id_), msg);
+    return 0;
 }
 
 } // namespace hal

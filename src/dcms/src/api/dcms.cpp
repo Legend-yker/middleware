@@ -17,8 +17,9 @@ int init(const std::string &node_name, const std::string & /*config_path*/) {
     return rc;
 }
 
-void shutdown() {
+int shutdown() {
     g_default_node.reset();
+    return 0;
 }
 
 NodeHandle &defaultNode() {

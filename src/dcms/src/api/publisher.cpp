@@ -82,9 +82,10 @@ int Publisher::publish(const void *data, std::uint32_t len) {
     return kDcmsOk;
 }
 
-void Publisher::addSubscriberEventfd(int fd) {
+int Publisher::addSubscriberEventfd(int fd) {
     std::lock_guard<std::mutex> lk(eventfds_mutex_);
     subscriber_eventfds_.push_back(fd);
+    return 0;
 }
 
 } // namespace dcms

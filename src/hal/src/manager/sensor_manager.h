@@ -16,10 +16,10 @@ public:
     SensorManager &operator=(const SensorManager &) = delete;
 
     bool loadFromJson(const std::string &path, std::string &err);
-    void clear();
+    int  clear();
 
     bool startAll(std::string &err);
-    void stopAll();
+    int  stopAll();
 
     Config &config() { return config_; }
     const Config &config() const { return config_; }

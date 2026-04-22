@@ -14,7 +14,7 @@ DCMS_API int init(const std::string &node_name    = "anonymous",
                   const std::string &config_path  = "");
 
 // Shut down and destroy the default NodeHandle.
-DCMS_API void shutdown();
+DCMS_API int  shutdown();
 
 // Access the process-level default NodeHandle (valid after init()).
 DCMS_API NodeHandle &defaultNode();

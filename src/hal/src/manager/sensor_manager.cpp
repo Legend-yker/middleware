@@ -17,9 +17,10 @@ bool SensorManager::loadFromJson(const std::string &path, std::string &err) {
     return true;
 }
 
-void SensorManager::clear() {
+int SensorManager::clear() {
     stopAll();
     config_.clear();
+    return 0;
 }
 
 bool SensorManager::startAll(std::string &err) {
@@ -37,8 +38,9 @@ bool SensorManager::startAll(std::string &err) {
     return ok;
 }
 
-void SensorManager::stopAll() {
+int SensorManager::stopAll() {
     config_.forEach([](SensorBase &s) { s.stop(); });
+    return 0;
 }
 
 } // namespace hal

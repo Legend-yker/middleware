@@ -8,13 +8,14 @@
 #include "api/service_server.h"
 #include "api/service_client.h"
 
+#include "utils/dcms_thread.h"
+
 #include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <functional>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -110,8 +111,8 @@ public:
     }
 
     // Called by Publisher ctor/dtor to maintain the pub_registry_
-    void registerPublisher(TopicId id, Publisher *pub);
-    void unregisterPublisher(TopicId id);
+    int registerPublisher(TopicId id, Publisher *pub);
+    int unregisterPublisher(TopicId id);
 
     int daemonFd() const { return daemon_fd_; }
 
@@ -127,8 +128,8 @@ private:
 
     int daemon_fd_{-1};
 
-    std::thread       notify_thread_;
-    std::atomic<bool> notify_running_{false};
+    dcms::utils::SingleThread notify_thread_;
+    std::atomic<bool>         notify_running_{false};
 
     std::mutex                               pub_registry_mutex_;
     std::unordered_map<TopicId, Publisher *> pub_registry_;

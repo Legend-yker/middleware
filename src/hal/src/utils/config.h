@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace utils {
+namespace hal::utils {
 
 class Config {
 public:
@@ -33,4 +33,4 @@ private:
     std::string file_path_;
 };
 
-} // namespace utils
+} // namespace hal::utils

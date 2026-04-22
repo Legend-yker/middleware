@@ -46,7 +46,7 @@ public:
 
     // Called by NodeHandle::notifyLoop() when a new subscriber joins.
     // Takes ownership of fd.
-    void addSubscriberEventfd(int fd);
+    int addSubscriberEventfd(int fd);
 
 private:
     TopicId       topic_id_{0};

@@ -1,5 +1,8 @@
 build/
+build-*/
 cmake-build-*/
 compile_commands.json
 release_how_to/build-x86/
 release_how_to/build-arm/
+release_how_to/build_x86/
+release_how_to/build_arm/

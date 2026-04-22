@@ -3,7 +3,6 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
-#include <thread>
 
 #include <fcntl.h>
 #include <poll.h>
@@ -19,8 +18,7 @@ NodeHandle::NodeHandle()  = default;
 
 NodeHandle::~NodeHandle() {
     notify_running_ = false;
-    if (notify_thread_.joinable())
-        notify_thread_.join();
+    notify_thread_.wait();
     if (daemon_fd_ >= 0) {
         ::close(daemon_fd_);
         daemon_fd_ = -1;
@@ -173,20 +171,23 @@ Publisher NodeHandle::advertise_raw(const std::string &topic_name,
     bool expected = false;
     if (notify_running_.compare_exchange_strong(expected, true,
             std::memory_order_acquire, std::memory_order_relaxed)) {
-        notify_thread_ = std::thread([this] { notifyLoop(); });
+        notify_thread_ = dcms::utils::SingleThread(
+            "dcms_notify", [this] { notifyLoop(); });
     }
 
     return Publisher(tid, ptr, ack.shm_size, ring_slots, slot_size, this);
 }
 
-void NodeHandle::registerPublisher(TopicId id, Publisher *pub) {
+int NodeHandle::registerPublisher(TopicId id, Publisher *pub) {
     std::lock_guard<std::mutex> lk(pub_registry_mutex_);
     pub_registry_[id] = pub;
+    return 0;
 }
 
-void NodeHandle::unregisterPublisher(TopicId id) {
+int NodeHandle::unregisterPublisher(TopicId id) {
     std::lock_guard<std::mutex> lk(pub_registry_mutex_);
     pub_registry_.erase(id);
+    return 0;
 }
 
 bool NodeHandle::sendMsg(DaemonMsgType type, const void *payload,

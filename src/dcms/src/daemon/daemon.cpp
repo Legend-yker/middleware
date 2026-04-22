@@ -90,14 +90,14 @@ Daemon::~Daemon() {
     ::unlink(kDaemonSocketPath);
 }
 
-int Daemon::run() {
+bool Daemon::init() {
     if (!bindListenSocket())
-        return 1;
+        return false;
 
     epoll_fd_ = ::epoll_create1(EPOLL_CLOEXEC);
     if (epoll_fd_ < 0) {
         std::perror("epoll_create1");
-        return 1;
+        return false;
     }
 
     epoll_event ev{};
@@ -105,16 +105,22 @@ int Daemon::run() {
     ev.data.fd = listen_fd_;
     if (::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, listen_fd_, &ev) < 0) {
         std::perror("epoll_ctl listen_fd");
-        return 1;
+        return false;
     }
+    return true;
+}
 
-    running_ = true;
-    acceptLoop();
+int Daemon::start() {
+    running_       = true;
+    accept_thread_ = dcms::utils::SingleThread(
+        "dcms_accept", [this] { acceptLoop(); });
     return 0;
 }
 
-void Daemon::stop() {
+int Daemon::stop() {
     running_ = false;
+    accept_thread_.wait();
+    return 0;
 }
 
 bool Daemon::bindListenSocket() {

@@ -22,13 +22,13 @@ public:
     std::uint16_t dataPort() const { return data_port_; }
 
     bool start() override;
-    void stop() override;
+    int  stop() override;
 
 protected:
     bool doInitParams(const nlohmann::json &configEntry) override;
 
     virtual bool doStartCapture() = 0;
-    virtual void doStopCapture() = 0;
+    virtual int  doStopCapture()  = 0;
 
     std::string model_;
     std::string transport_;

@@ -2,13 +2,14 @@
 
 #include "common/dcms_types.h"
 #include "shm/ring_buffer.h"
+#include "utils/dcms_thread.h"
 
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <poll.h>
 #include <sys/mman.h>
-#include <thread>
 #include <unistd.h>
 
 namespace dcms {
@@ -31,13 +32,14 @@ public:
           eventfd_fd_(eventfd_fd),
           cb_(std::move(cb)),
           running_(true) {
-        recv_thread_ = std::thread([this] { receiveLoop(); });
+        recv_thread_ = std::make_unique<dcms::utils::SingleThread>(
+            "recv_" + std::to_string(topic_id),
+            [this] { receiveLoop(); });
     }
 
     ~Subscriber() {
         running_ = false;
-        if (recv_thread_.joinable())
-            recv_thread_.join();
+        recv_thread_.reset();   // SingleThread dtor joins
         if (eventfd_fd_ >= 0) {
             ::close(eventfd_fd_);
             eventfd_fd_ = -1;
@@ -58,6 +60,7 @@ public:
           read_idx_(o.read_idx_),
           running_(o.running_.load()),
           recv_thread_(std::move(o.recv_thread_)) {
+
         o.ring_base_   = nullptr;
         o.eventfd_fd_  = -1;
         o.running_     = false;
@@ -128,8 +131,8 @@ private:
     int           eventfd_fd_{-1};
     Callback      cb_;
     std::uint32_t read_idx_{0};
-    std::atomic<bool> running_{false};
-    std::thread   recv_thread_;
+    std::atomic<bool>                          running_{false};
+    std::unique_ptr<dcms::utils::SingleThread> recv_thread_;
 };
 
 } // namespace dcms

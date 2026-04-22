@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace utils {
+namespace hal::utils {
 
 bool Config::loadFromJson(const std::string &path, std::string &err) {
     std::ifstream in(path);
@@ -77,4 +77,4 @@ bool Config::validate(const std::vector<std::string> &requiredKeys, std::string 
     return true;
 }
 
-} // namespace utils
+} // namespace hal::utils

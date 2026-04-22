@@ -2,11 +2,11 @@
 
 #include "daemon/daemon_protocol.h"
 #include "common/dcms_types.h"
+#include "utils/dcms_thread.h"
 
 #include <atomic>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -42,9 +42,12 @@ public:
     Daemon(const Daemon &) = delete;
     Daemon &operator=(const Daemon &) = delete;
 
-    // Block until stop() is called or fatal error. Returns exit code.
-    int  run();
-    void stop();
+    // Bind socket and create epoll. Must be called before start().
+    bool init();
+    // Launch the accept thread. Returns 0 on success, -1 on error.
+    int start();
+    // Signal the accept thread to exit and wait for it to join. Returns 0.
+    int stop();
 
 private:
     bool bindListenSocket();
@@ -76,6 +79,7 @@ private:
     int  epoll_fd_{-1};
     std::atomic<bool>          running_{false};
     std::atomic<std::uint32_t> next_node_id_{1};
+    dcms::utils::SingleThread  accept_thread_;
 
     std::mutex clients_mutex_;
     std::unordered_map<int /*fd*/, ClientInfo> clients_;

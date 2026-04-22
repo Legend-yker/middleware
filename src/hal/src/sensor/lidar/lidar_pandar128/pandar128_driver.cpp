@@ -124,8 +124,7 @@ bool Pandar128Driver::doStartCapture() {
     return true;
 }
 
-void Pandar128Driver::doStopCapture() {
-    // 流程 3：停止时先让循环退出，再关闭 socket，最后回收线程。
+int Pandar128Driver::doStopCapture() {
     capturing_ = false;
     closeSocket();
     if (recv_thread_ && recv_thread_->joinable())
@@ -133,6 +132,7 @@ void Pandar128Driver::doStopCapture() {
     recv_thread_.reset();
 
     SLOG_INFO("stop capture total_frames=" + std::to_string(frame_seq_));
+    return 0;
 }
 
 bool Pandar128Driver::openSocket() {
@@ -179,14 +179,15 @@ bool Pandar128Driver::openSocket() {
     return true;
 }
 
-void Pandar128Driver::closeSocket() {
+int Pandar128Driver::closeSocket() {
     if (socket_fd_ >= 0) {
         ::close(socket_fd_);
         socket_fd_ = -1;
     }
+    return 0;
 }
 
-void Pandar128Driver::udpRecvLoop() {
+int Pandar128Driver::udpRecvLoop() {
     std::uint8_t recv_buf[sizeof(FakePandarPacket)];
 
     SLOG_DEBUG("udpRecvLoop started");
@@ -226,6 +227,7 @@ void Pandar128Driver::udpRecvLoop() {
     }
 
     SLOG_DEBUG("udpRecvLoop exited");
+    return 0;
 }
 
 } // namespace hal

@@ -12,7 +12,7 @@ public:
 protected:
     bool doInitParams(const nlohmann::json &configEntry) override;
     bool doStartCapture() override;
-    void doStopCapture() override;
+    int  doStopCapture() override;
 
 private:
     std::string scan_mode_; // "single", "dual"

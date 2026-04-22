@@ -44,7 +44,7 @@ public:
     const std::vector<SensorItemConfig> &gnssSensors() const { return gnss_sensors_; }
     const std::vector<SensorItemConfig> &odoSensors() const { return odo_sensors_; }
 
-    const utils::Config &rawConfig() const { return config_; }
+    const hal::utils::Config &rawConfig() const { return config_; }
 
 private:
     bool parseManagers(std::string &err);
@@ -52,7 +52,7 @@ private:
     bool parseSensors(std::string &err);
     bool parseSensorGroup(const nlohmann::json &group, std::string &err);
 
-    utils::Config config_;
+    hal::utils::Config config_;
     std::string version_;
     std::string mode_;
     std::string project_;
