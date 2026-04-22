@@ -83,43 +83,45 @@ private:
     void receiveLoop() {
         while (running_.load(std::memory_order_relaxed)) {
             pollfd pfd{eventfd_fd_, POLLIN, 0};
+            // 100ms 超时：running_=false 后最多再等 100ms 才退出
             int rc = ::poll(&pfd, 1, 100 /*ms*/);
             if (rc <= 0) continue;
 
             if (pfd.revents & (POLLHUP | POLLERR)) {
+                // Publisher 进程退出，eventfd 被关闭，POLLHUP 触发
                 running_ = false;
                 break;
             }
 
             if (!(pfd.revents & POLLIN)) continue;
 
-            // Read the eventfd counter (cleared atomically)
+            // read(eventfd) 一次原子地读出并清零计数器，得到自上次唤醒以来积压的消息数
             std::uint64_t count = 0;
             if (::read(eventfd_fd_, &count, sizeof(count)) != sizeof(count))
                 continue;
 
-            // Process up to 'count' messages, but also check ring directly
-            // in case publisher wrote more before our read fired
+            // 直接对比 ring 的 write_idx 和本地 read_idx_：
+            // 防止 Publisher 在 eventfd read 之前已经连写了多条，count 比实际少的情况
             const RingHeader *hdr = ring_.header();
             const std::uint32_t writer_idx =
                 hdr->write_idx.load(std::memory_order_acquire);
 
-            // Clamp to avoid spinning if we're already caught up
             std::uint32_t pending =
                 static_cast<std::uint32_t>(writer_idx - read_idx_);
-            if (pending == 0) pending = static_cast<std::uint32_t>(count);
+            if (pending == 0) pending = static_cast<std::uint32_t>(count); // 已追上，按 eventfd 计数走
 
             for (std::uint32_t i = 0; i < pending; ++i) {
                 alignas(alignof(T)) std::uint8_t buf[sizeof(T)];
                 std::uint32_t out_len = 0, out_seq = 0;
 
+                // seqlock 读取失败（正在写入/从未写入）→ 跳出，下次 eventfd 唤醒再读
                 if (!ring_.read(read_idx_, buf, sizeof(T), out_len, out_seq))
                     break;
 
                 if (cb_ && out_len >= sizeof(T))
                     cb_(*reinterpret_cast<const T *>(buf));
 
-                ++read_idx_;
+                ++read_idx_; // 每个 Subscriber 独立维护读游标，不影响其他 Subscriber
             }
         }
     }

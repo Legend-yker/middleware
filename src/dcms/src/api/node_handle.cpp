@@ -105,6 +105,7 @@ int NodeHandle::create(const std::string &node_name, NodeHandle &out) {
 void NodeHandle::notifyLoop() {
     while (notify_running_.load(std::memory_order_relaxed)) {
         pollfd pfd{daemon_fd_, POLLIN, 0};
+        // 100ms 超时轮询，确保 notify_running_=false 后能及时退出
         int rc = ::poll(&pfd, 1, 100 /*ms*/);
         if (rc <= 0) continue;
         if (pfd.revents & (POLLHUP | POLLERR)) {
@@ -120,15 +121,15 @@ void NodeHandle::notifyLoop() {
             break;
 
         if (hdr.type == DaemonMsgType::kNewSubscriberNotify && efd >= 0) {
-            // Deliver the eventfd to the matching publisher.
-            // The Daemon already sent the right eventfd; deliver to all
-            // publishers in this node (typically just one per topic).
+            // 有新 Subscriber 加入：把 Daemon 通过 SCM_RIGHTS 传来的 eventfd
+            // 投递给本进程所有 Publisher（通常一个 topic 只有一个 Publisher）。
+            // 用 dup 是因为每个 Publisher 需要独立的 fd，close 时互不影响。
             std::lock_guard<std::mutex> lk(pub_registry_mutex_);
             for (auto &[tid, pub] : pub_registry_) {
                 if (pub)
                     pub->addSubscriberEventfd(::dup(efd));
             }
-            ::close(efd);
+            ::close(efd); // 原 fd 已 dup 给各 Publisher，自身关闭
         }
     }
 }
@@ -233,10 +234,10 @@ bool NodeHandle::recvMsgWithFd(DaemonMsgHeader &hdr,
                                 int &fd_out) {
     fd_out = -1;
 
-    // On Unix stream sockets, SCM_RIGHTS ancillary data is associated with
-    // the FIRST byte of the sendmsg() call that sent it. We must use recvmsg()
-    // (not plain recv()) for the header read so the control buffer captures
-    // the fd before the kernel discards it.
+    // SCM_RIGHTS 的关键约束：ancillary data（附带的 fd）与 sendmsg() 发出的
+    // 第一个字节绑定。如果用普通 recv() 读走了那个字节，内核就会丢弃 fd。
+    // 因此帧头必须用 recvmsg() 读，同时提供 cmsg 缓冲区来捕获 fd。
+    // Payload 字节在帧头之后，此时 SCM_RIGHTS 已经取出，后续可以用普通 recv。
     iovec iov{&hdr, sizeof(hdr)};
     union { char buf[CMSG_SPACE(sizeof(int))]; cmsghdr align; } ctrl{};
     msghdr msg{};
@@ -249,11 +250,12 @@ bool NodeHandle::recvMsgWithFd(DaemonMsgHeader &hdr,
     if (r != static_cast<ssize_t>(sizeof(hdr)))
         return false;
 
+    // 从 cmsg 控制消息中取出传递过来的文件描述符
     cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
     if (cmsg && cmsg->cmsg_type == SCM_RIGHTS)
         std::memcpy(&fd_out, CMSG_DATA(cmsg), sizeof(int));
 
-    // Payload can now be read with plain recv
+    // SCM_RIGHTS 已经取出，后续 payload 可以用普通 recv 读取
     payload.clear();
     if (hdr.payload_len > 0) {
         payload.resize(hdr.payload_len);

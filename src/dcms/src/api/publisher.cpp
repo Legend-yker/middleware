@@ -66,13 +66,14 @@ int Publisher::publish(const void *data, std::uint32_t len) {
     if (!ring_.write(data, len))
         return kDcmsErrInvalidArg;  // len > slot_size
 
-    // Notify all subscribers
+    // 写 eventfd：每次 write(fd, &1, 8) 使计数器 +1，Subscriber 的 poll 被唤醒
     const std::uint64_t val = 1u;
     std::lock_guard<std::mutex> lk(eventfds_mutex_);
     for (auto it = subscriber_eventfds_.begin();
          it != subscriber_eventfds_.end(); ) {
         if (::write(*it, &val, sizeof(val)) < 0 &&
             (errno == EBADF || errno == EPIPE || errno == EINVAL)) {
+            // Subscriber 已退出（fd 已关闭）→ 自动清理，防止 fd 泄漏
             ::close(*it);
             it = subscriber_eventfds_.erase(it);
         } else {
