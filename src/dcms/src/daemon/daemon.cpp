@@ -99,7 +99,7 @@ bool Daemon::init() {
         std::perror("epoll_create1");
         return false;
     }
-
+    //这里为何要
     epoll_event ev{};
     ev.events  = EPOLLIN;
     ev.data.fd = listen_fd_;
@@ -161,7 +161,7 @@ void Daemon::acceptLoop() {
         int n = ::epoll_wait(epoll_fd_, events, kMaxEvents, 200 /*ms*/);
         if (n < 0) {
             if (errno == EINTR) continue; // 被信号打断，不是真正出错，重试
-            std::perror("epoll_wait");
+            std::perror("epoll_wait: no event happend");
             break;
         }
 
@@ -206,45 +206,72 @@ void Daemon::acceptLoop() {
 }
 
 void Daemon::handleClientReadable(int client_fd) {
-    // Edge-triggered: drain all available PDUs
+    // EPOLLET 边缘触发：内核只通知一次"有新数据到了"。
+    // 如果这次没读完，剩余数据不会再触发事件，必须循环读干净。
     while (true) {
-        DaemonMsgHeader          hdr{};
+        // ── Step1：读取一帧 PDU（帧头 + payload）─────────────────────────────
+        // 每条消息格式：[DaemonMsgHeader 8B][payload N B]
+        // recvMsg 内部先读固定长度帧头，再按 payload_len 继续读 payload
+        DaemonMsgHeader           hdr{};
         std::vector<std::uint8_t> payload;
-        int ancfd = -1;
+        int ancfd = -1; // 此路径不收 SCM_RIGHTS fd（只有订阅回包才有，由 sendMsg 发出）
 
         if (!recvMsg(client_fd, hdr, payload, ancfd)) {
+            // 读失败 = 对端已关闭连接或 socket 出错
+            // 主动清理：shm_unlink、关闭 eventfd dup 副本、从 epoll 移除
             handleClientDisconnect(client_fd);
             return;
         }
 
+        // ── Step2：按消息类型分发处理 ─────────────────────────────────────────
+        // hdr.type 由客户端（NodeHandle）发送时填写，对应四阶段协议的请求类型
         switch (hdr.type) {
+
         case DaemonMsgType::kNodeRegister:
+            // 阶段一：NodeHandle::create() 连接后的第一条消息，内容是 node_name + pid
+            // 处理：分配 node_id，写入 clients_ 表，回复 NodeRegisterAck
             if (payload.size() >= sizeof(NodeRegisterReq)) {
                 NodeRegisterReq req{};
-                std::memcpy(&req, payload.data(), sizeof(req));
+                std::memcpy(&req, payload.data(), sizeof(req)); // vector → 结构体反序列化
                 handleNodeRegister(client_fd, req);
             }
             break;
+
         case DaemonMsgType::kAdvertise:
+            // 阶段二：NodeHandle::advertise_raw() 发来的发布声明，内容是 topic_name + slot_size + ring_slots
+            // 处理：shm_open 创建共享内存并初始化 RingHeader，回复 AdvertiseAck（含 shm_name）
+            //       Publisher 拿到 shm_name 后自己 mmap，Daemon 不再持有该内存映射
             if (payload.size() >= sizeof(AdvertiseReq)) {
                 AdvertiseReq req{};
                 std::memcpy(&req, payload.data(), sizeof(req));
                 handleAdvertise(client_fd, req);
             }
             break;
+
         case DaemonMsgType::kSubscribe:
+            // 阶段三：NodeHandle::subscribe<T>() 发来的订阅请求，内容是 topic_name
+            // 处理流程：
+            //   1. 查找 topic 对应的 shm 信息
+            //   2. eventfd() 创建一个通知用的 fd（计数器，初值为0）
+            //   3. dup 出两个副本：一个给 Publisher，一个 Daemon 自己保留
+            //   4. 原 efd 通过 SCM_RIGHTS 附在 SubscribeAck 里发给 Subscriber
+            //   5. dup 副本通过 SCM_RIGHTS 附在 kNewSubscriberNotify 里发给 Publisher
+            //   → 之后 Publisher write(efd,1) 直接唤醒 Subscriber，Daemon 不再参与
             if (payload.size() >= sizeof(SubscribeReq)) {
                 SubscribeReq req{};
                 std::memcpy(&req, payload.data(), sizeof(req));
                 handleSubscribe(client_fd, req);
             }
             break;
+
         default:
             break;
         }
 
-        // Check if more data is ready (EPOLLET requires full drain)
-        // Use MSG_PEEK to test without consuming
+        // ── Step3：检查缓冲区是否还有剩余数据（EPOLLET 必须读干净）────────────
+        // MSG_PEEK    : 偷看 1 字节但不消耗，数据仍在缓冲区
+        // MSG_DONTWAIT: 非阻塞，缓冲区空时立即返回 EAGAIN（<=0）
+        // 返回 <=0 说明本次数据已读完，退出循环，等下次 epoll 事件
         char peek = 0;
         if (::recv(client_fd, &peek, 1, MSG_PEEK | MSG_DONTWAIT) <= 0)
             break;
