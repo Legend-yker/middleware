@@ -16,7 +16,7 @@ class DCMS_API Publisher {
 public:
     Publisher() = default;
 
-    // Constructed by NodeHandle::advertise<T>()
+    // 由 NodeHandle::advertise<T>() 构造，外部不直接 new
     Publisher(TopicId topic_id, void *ring_base, std::uint64_t shm_size,
               std::uint32_t ring_slots, std::uint32_t slot_size,
               NodeHandle *owner);
@@ -31,8 +31,8 @@ public:
     bool    valid()   const { return ring_base_ != nullptr; }
     TopicId topicId() const { return topic_id_; }
 
-    // Write msg directly into the ring buffer, then signal all subscribers.
-    // T must be trivially copyable and sizeof(T) == slot_size_ (enforced at runtime).
+    // 将 msg 写入环形缓冲区并通过 eventfd 通知所有订阅者。
+    // T 必须是 trivially copyable（可安全 memcpy，无虚表/资源句柄）。
     template <typename T>
     int publish(const T &msg) {
         static_assert(__is_trivially_copyable(T),
@@ -41,22 +41,21 @@ public:
                        static_cast<std::uint32_t>(sizeof(T)));
     }
 
-    // Raw publish
+    // 不指定类型的原始发布接口（SensorBase 等运行时确定大小时使用）
     int publish(const void *data, std::uint32_t len);
 
-    // Called by NodeHandle::notifyLoop() when a new subscriber joins.
-    // Takes ownership of fd.
+    // 由 NodeHandle::notifyLoop() 调用，新订阅者加入时投递 eventfd
     int addSubscriberEventfd(int fd);
 
 private:
     TopicId       topic_id_{0};
-    void         *ring_base_{nullptr};
-    std::uint64_t shm_size_{0};
-    RingBuffer    ring_;
-    NodeHandle   *owner_{nullptr};
+    void         *ring_base_{nullptr};  // mmap 共享内存起始地址
+    std::uint64_t shm_size_{0};         // mmap 大小，析构时 munmap 用
+    RingBuffer    ring_;                // 非持有型访问器，指向 ring_base_
+    NodeHandle   *owner_{nullptr};      // 反向引用，不持有所有权
 
     std::mutex       eventfds_mutex_;
-    std::vector<int> subscriber_eventfds_;
+    std::vector<int> subscriber_eventfds_; // 每个订阅者一个 eventfd，publish 时逐一通知
 };
 
 } // namespace dcms

@@ -14,15 +14,12 @@
 
 namespace dcms {
 
-// ServiceServer<Req, Resp>
-//
-// Listens on /tmp/dcms_svc_<service_name>.sock for incoming RPC calls.
-// For each connection: receives [uint32_t len][Req], calls handler, sends [uint32_t len][Resp].
-// Req and Resp must be trivially copyable POD types.
-//
-// Usage (via NodeHandle):
-//   auto srv = nh.advertiseService<AddReq, AddResp>("add",
-//       [](const AddReq &req, AddResp &resp){ resp.sum = req.a + req.b; });
+// RPC 服务端，监听 /tmp/dcms_svc_<service_name>.sock。
+// 每次连接：接收 [uint32_t len][Req]，调用 handler，回复 [uint32_t len][Resp]。
+// Req 和 Resp 必须是 trivially copyable 的 POD 类型。
+// 不经过 Daemon，Publisher/Subscriber 也不涉及，是独立的点对点通信。
+// 用法：auto srv = nh.advertiseService<AddReq, AddResp>("add",
+//           [](const AddReq &req, AddResp &resp){ resp.sum = req.a + req.b; });
 
 template <typename Req, typename Resp>
 class ServiceServer {
@@ -96,26 +93,28 @@ private:
     void acceptLoop() {
         while (running_.load(std::memory_order_relaxed)) {
             pollfd pfd{listen_fd_, POLLIN, 0};
-            if (::poll(&pfd, 1, 100) <= 0) continue;
+            if (::poll(&pfd, 1, 100) <= 0) continue; // 100ms 超时，方便 running_=false 后退出
             if (!(pfd.revents & POLLIN)) continue;
             int client_fd = ::accept4(listen_fd_, nullptr, nullptr, SOCK_CLOEXEC);
             if (client_fd < 0) continue;
-            handleClient(client_fd);
-            ::close(client_fd);
+            handleClient(client_fd); // 同步处理：读 Req → 调 handler → 发 Resp
+            ::close(client_fd);      // 单次 RPC 完成后关闭连接
         }
     }
 
     void handleClient(int fd) {
+        // 协议格式：[uint32_t len][Req 结构体]
         std::uint32_t req_len = 0;
         if (!recvExact(fd, &req_len, sizeof(req_len))) return;
-        if (req_len != sizeof(Req)) return;
+        if (req_len != sizeof(Req)) return; // 类型不匹配，拒绝
 
         Req req{};
         if (!recvExact(fd, &req, sizeof(Req))) return;
 
         Resp resp{};
-        handler_(req, resp);
+        handler_(req, resp); // 调用用户注册的处理函数
 
+        // 回复格式：[uint32_t len][Resp 结构体]
         std::uint32_t resp_len = static_cast<std::uint32_t>(sizeof(Resp));
         if (!sendExact(fd, &resp_len, sizeof(resp_len))) return;
         sendExact(fd, &resp, sizeof(Resp));

@@ -10,16 +10,10 @@
 
 namespace dcms {
 
-// ServiceClient<Req, Resp>
-//
-// Connects to /tmp/dcms_svc_<service_name>.sock for each call().
-// Sends [uint32_t len][Req], receives [uint32_t len][Resp].
-// Req and Resp must be trivially copyable POD types.
-//
-// Usage (via NodeHandle):
-//   auto cli = nh.serviceClient<AddReq, AddResp>("add");
-//   AddResp resp{};
-//   int rc = cli.call(req, resp);
+// RPC 客户端，每次 call() 建立一个短连接。
+// 协议：发 [uint32_t len][Req]，收 [uint32_t len][Resp]。
+// 用法：auto cli = nh.serviceClient<AddReq, AddResp>("add");
+//       int rc = cli.call(req, resp);
 
 template <typename Req, typename Resp>
 class ServiceClient {
@@ -31,13 +25,13 @@ public:
 
     bool valid() const { return !socket_path_.empty(); }
 
-    // Returns kDcmsOk on success.
-    // Returns kDcmsErrDaemonNotFound if server is not running.
-    // Returns kDcmsErrNotImpl on protocol error or timeout.
+    // 发起一次 RPC 调用，成功返回 kDcmsOk。
+    // kDcmsErrDaemonNotFound：服务端未运行；kDcmsErrNotImpl：协议错误或超时。
     int call(const Req &req, Resp &resp, int timeout_ms = 1000) {
         int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (fd < 0) return kDcmsErrNotImpl;
 
+        // 同时设置发送和接收超时，防止服务端无响应时永久阻塞
         struct timeval tv{timeout_ms / 1000, (timeout_ms % 1000) * 1000};
         ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
