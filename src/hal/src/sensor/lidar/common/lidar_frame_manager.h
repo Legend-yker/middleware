@@ -138,12 +138,14 @@ private:
     Config      cfg_;
     Stats       stats_{};
 
-    LidarFrame  buf_{};                  // 正在积累的帧缓冲
+    LidarFrame  buf_{};          // 正在积累的帧（未完成）
+    LidarFrame  out_frame_{};    // 已完成等待 take() 取走的帧
     std::uint32_t curr_pkts_{0};         // 当前帧已收包数
     std::uint64_t frame_start_us_{0};    // 当前帧第一包的设备时间
     std::uint64_t frame_recv_us_{0};     // 当前帧系统收包时间（用于 time_recv_us）
     float         last_angle_{-1.0f};    // 上一包结束方位角（帧边界检测用）
     bool          ready_{false};         // 是否有帧等待 take()
+    bool          seq_initialized_{false}; // 序列号是否已初始化
     std::uint32_t frame_id_{0};          // 帧序号（单调递增）
 
     // 角度覆盖位图：360 bit，每 1° 一个 bit，共 6 个 uint64

@@ -1,3 +1,8 @@
+add_executable(lidar_frame_manager_test lidar_frame_manager_test.cpp)
+target_link_libraries(lidar_frame_manager_test PRIVATE hal)
+middleware_set_module_output(lidar_frame_manager_test tests)
+add_test(NAME lidar_frame_manager_test COMMAND lidar_frame_manager_test)
+
 add_executable(hal_sensor_smoke hal_sensor_smoke.cpp)
 target_link_libraries(hal_sensor_smoke PRIVATE hal)
 target_compile_definitions(hal_sensor_smoke

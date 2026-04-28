@@ -1,6 +1,5 @@
 #include "sensor/lidar/common/lidar_frame_manager.h"
 
-#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstring>
@@ -22,37 +21,36 @@ bool LidarFrameManager::feed(const LidarPoint *pts, std::uint32_t count,
     ready_ = false;
 
     // Step1：更新三层时间戳 + 丢包检测
+    // pkt_total > 0 才有"上一包"可以比较
     rollTime(info);
-    if (stats_.pkt_total > 1) {          // 第一包没有"上一包"，跳过检测
+    if (stats_.pkt_total > 0) {
         checkDropByTime();
         if (info.has_seq && cfg_.has_seq)
             checkDropBySeq(info.seq);
     }
     stats_.pkt_total++;
-    stats_.curr_pkts = ++curr_pkts_;
 
-    // Step2：判断是否到达新帧边界（当前包起始角触发帧边界）
-    // 必须在追加点之前判断，否则新帧第一包的点会被算进上一帧
-    if (curr_pkts_ > 1 && isNewFrame(info.angle_start)) {
+    // Step2：方位角帧边界检测
+    // 边界检测在 curr_pkts_ 自增之前，避免边界包被计入上一帧的 pkt_got
+    if (curr_pkts_ > 0 && isNewFrame(info.angle_start)) {
+        // 关闭上一帧（不含本包），本包将成为新帧的第一包
         closeFrame(LidarFrame::Status::kOk);
-        return true;
     }
 
-    // Step3：记录帧起始信息（第一包）
-    if (curr_pkts_ == 1) {
-        frame_start_us_  = info.device_time_us;
-        frame_recv_us_   = info.recv_time_us;
+    // Step3：记录新帧起始信息（每帧第一包时执行）
+    if (curr_pkts_ == 0) {
+        frame_start_us_ = info.device_time_us;
+        frame_recv_us_  = info.recv_time_us;
         std::memset(angle_map_, 0, sizeof(angle_map_));
     }
+    stats_.curr_pkts = ++curr_pkts_;
 
     // Step4：过滤无效点，追加到帧缓冲
     for (std::uint32_t i = 0; i < count; ++i) {
-        if (!isGoodPoint(pts[i]))
-            continue;
+        if (!isGoodPoint(pts[i])) continue;
         if (buf_.num_points >= cfg_.max_points) {
-            // 点数溢出：提前发布
-            closeFrame(LidarFrame::Status::kFull);
-            return true;
+            if (!ready_) closeFrame(LidarFrame::Status::kFull);
+            break;
         }
         buf_.points[buf_.num_points++] = pts[i];
     }
@@ -61,34 +59,34 @@ bool LidarFrameManager::feed(const LidarPoint *pts, std::uint32_t count,
     markAngle(info.angle_start, info.angle_end);
     last_angle_ = info.angle_end;
 
-    // Step6：超时检测（用设备时间判断帧积累是否过久）
-    if (frame_start_us_ > 0 &&
+    // Step6：超时检测（边界触发后已 ready_，不再重复触发）
+    if (!ready_ && frame_start_us_ > 0 &&
         info.device_time_us - frame_start_us_ > cfg_.frame_timeout_us) {
         closeFrame(LidarFrame::Status::kTimeout);
-        return true;
     }
 
-    // Step7：包数达到期望值（备用触发，方位角法为主）
-    if (curr_pkts_ >= cfg_.pkts_per_frame) {
+    // Step7：包数达到期望值（备用触发）
+    if (!ready_ && curr_pkts_ >= cfg_.pkts_per_frame) {
         closeFrame(LidarFrame::Status::kOk);
-        return true;
     }
 
     stats_.curr_cover = calcCover();
-    return false;
+    return ready_;
 }
 
-// ── take：取走就绪的帧 ────────────────────────────────────────────────────────
+// ── take：取走就绪的帧（out_frame_，不是积累中的 buf_）──────────────────────
 LidarFrame LidarFrameManager::take() {
-    LidarFrame out = buf_;
-    clearBuf();
-    ready_ = false;
+    LidarFrame out = out_frame_;
+    out_frame_ = LidarFrame{};
+    ready_     = false;
     return out;
 }
 
 // ── 重置所有状态 ──────────────────────────────────────────────────────────────
 void LidarFrameManager::reset() {
-    stats_  = Stats{};
+    stats_           = Stats{};
+    out_frame_       = LidarFrame{};
+    seq_initialized_ = false;
     clearBuf();
     last_angle_ = -1.0f;
     ready_      = false;
@@ -137,66 +135,62 @@ void LidarFrameManager::checkDropByTime() {
 }
 
 void LidarFrameManager::checkDropBySeq(std::uint32_t seq) {
-    if (stats_.pkt_total == 1) {
-        // 第一包，只记录序列号，不判断跳变
-        stats_.last_seq = seq;
+    if (!seq_initialized_) {
+        // 第一次有序列号数据：只记录，不判断跳变
+        stats_.last_seq  = seq;
+        seq_initialized_ = true;
         return;
     }
-    // 序列号是 32bit 环绕，用差值处理溢出
+    // 序列号 32bit 环绕，差值运算自动处理溢出
     const std::uint32_t expected = stats_.last_seq + 1u;
     if (seq != expected) {
-        // 跳变：可能丢包，也可能驱动重启，取两者中较小的
-        const std::uint32_t gap = seq - expected; // 32bit 环绕自动处理
-        if (gap < 1000u)                          // 超过 1000 视为重启，不计丢包
+        const std::uint32_t gap = seq - expected;
+        if (gap < 1000u)   // 超过 1000 视为驱动重启，不计丢包
             stats_.drop_by_seq += gap;
     }
     stats_.last_seq = seq;
 }
 
 bool LidarFrameManager::isNewFrame(float angle) const {
-    if (last_angle_ < 0.0f)
-        return false; // 还没有上一包，不判断
+    if (last_angle_ < 0.0f) return false;
 
-    // 检测方位角从高角度回绕到 frame_start_angle 附近
-    // 典型情况：last_angle_ ≈ 359°，angle ≈ 0°
-    const float start = cfg_.frame_start_angle;
-    const float tol   = cfg_.angle_tol;
-
-    // 上一包在帧终点附近（接近 360° 或 frame_start_angle 之前）
-    const bool prev_near_end = (last_angle_ > 360.0f - tol * 4.0f) ||
-                               (last_angle_ > start + 180.0f);
-    // 当前包在帧起点附近
-    const bool curr_near_start = (angle >= start - tol) &&
-                                 (angle <= start + tol + 10.0f);
-
-    return prev_near_end && curr_near_start;
+    // 帧边界判断：上一包角度在 270°~360° 区间，当前包角度在 0°~90° 区间
+    // 这意味着扫描从接近 360° 回绕到接近 0°，即完成了一圈
+    // 使用固定区间比"frame_start_angle ± tol"更稳定，避免 tol 设置不当误触发
+    const bool prev_in_tail    = (last_angle_ >= 270.0f);
+    const bool curr_in_head    = (angle       <  90.0f);
+    return prev_in_tail && curr_in_head;
 }
 
 void LidarFrameManager::closeFrame(LidarFrame::Status s) {
-    buf_.frame_id     = frame_id_++;
+    // 把积累好的帧元信息写入，然后搬到 out_frame_（等待 take()）
+    buf_.frame_id      = frame_id_++;
     buf_.time_first_us = frame_start_us_;
     buf_.time_last_us  = stats_.time_curr_us;
     buf_.time_recv_us  = frame_recv_us_;
     buf_.pkt_got       = curr_pkts_;
     buf_.pkt_want      = cfg_.pkts_per_frame;
-    buf_.drop_by_time  = stats_.drop_by_time; // 累计值，调用方可前后做差
+    buf_.drop_by_time  = stats_.drop_by_time;
     buf_.drop_by_seq   = stats_.drop_by_seq;
     buf_.status        = s;
     buf_.angle_cover   = calcCover();
 
+    out_frame_ = buf_;   // 完成的帧交给 out_frame_
+
     stats_.frame_total++;
     switch (s) {
-    case LidarFrame::Status::kOk:      stats_.frame_ok++;      break;
-    case LidarFrame::Status::kTimeout: stats_.frame_timeout++;  break;
-    case LidarFrame::Status::kFull:    stats_.frame_full++;     break;
+    case LidarFrame::Status::kOk:      stats_.frame_ok++;     break;
+    case LidarFrame::Status::kTimeout: stats_.frame_timeout++; break;
+    case LidarFrame::Status::kFull:    stats_.frame_full++;    break;
     }
 
-    // 用系统时间计算帧率（比设备时间更稳定）
     const std::uint64_t now_us = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
     calcFps(now_us);
 
+    // 清空积累缓冲，准备下一帧
+    clearBuf();
     stats_.curr_pkts  = 0;
     stats_.curr_cover = 0.0f;
     ready_ = true;
