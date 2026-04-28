@@ -35,14 +35,17 @@ private:
     std::thread worker_;
 };
 
-// Executes a task exactly once in a detached background thread.
-// The task is fire-and-forget; optionally wait for completion via wait().
+// Executes a task exactly once in a background thread.
+// Destructor joins the thread. Call wait() to block until done.
 class SingleThread {
 public:
+    SingleThread() = default;
     SingleThread(std::string name, std::function<void()> task);
     ~SingleThread();
 
-    SingleThread(const SingleThread &) = delete;
+    SingleThread(SingleThread &&o) noexcept;
+    SingleThread &operator=(SingleThread &&o) noexcept;
+    SingleThread(const SingleThread &)            = delete;
     SingleThread &operator=(const SingleThread &) = delete;
 
     int  wait();
@@ -50,9 +53,9 @@ public:
     const std::string &name() const { return name_; }
 
 private:
-    std::string name_;
-    std::atomic<bool> done_{false};
-    std::thread worker_;
+    std::string       name_;
+    std::atomic<bool> done_{true};
+    std::thread       worker_;
 };
 
 } // namespace hal::utils

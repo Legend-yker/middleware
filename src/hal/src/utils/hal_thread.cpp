@@ -34,10 +34,9 @@ void LoopThread::run() {
 // ---------- SingleThread ----------
 
 SingleThread::SingleThread(std::string name, std::function<void()> task)
-    : name_(std::move(name)) {
+    : name_(std::move(name)), done_(false) {
     worker_ = std::thread([this, t = std::move(task)] {
-        if (t)
-            t();
+        if (t) t();
         done_ = true;
     });
 }
@@ -45,6 +44,20 @@ SingleThread::SingleThread(std::string name, std::function<void()> task)
 SingleThread::~SingleThread() {
     if (worker_.joinable())
         worker_.join();
+}
+
+SingleThread::SingleThread(SingleThread &&o) noexcept
+    : name_(std::move(o.name_)),
+      done_(o.done_.load()),
+      worker_(std::move(o.worker_)) {
+    o.done_ = true;
+}
+
+SingleThread &SingleThread::operator=(SingleThread &&o) noexcept {
+    if (this == &o) return *this;
+    this->~SingleThread();
+    new (this) SingleThread(std::move(o));
+    return *this;
 }
 
 int SingleThread::wait() {

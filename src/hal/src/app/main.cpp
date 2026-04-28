@@ -60,7 +60,7 @@ struct FakePandarPacket {
     std::uint16_t point_count;
     std::uint32_t frame_id;
     std::uint64_t timestamp_us;
-    FakePandarPoint points[hal::LidarFrame::kMaxDemoPoints];
+    FakePandarPoint points[16u];
     std::uint32_t payload_crc32;
 };
 
@@ -78,7 +78,7 @@ FakePandarPacket buildPacket(std::uint32_t frame_id) {
     FakePandarPacket packet{};
     packet.magic = kFakePandarMagic;
     packet.version = kFakePandarVersion;
-    packet.point_count = hal::LidarFrame::kMaxDemoPoints;
+    packet.point_count = 16u;
     packet.frame_id = frame_id;
     packet.timestamp_us = nowUs();
 

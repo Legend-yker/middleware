@@ -49,7 +49,7 @@ struct FakePandarPacket {
     std::uint16_t point_count;
     std::uint32_t frame_id;
     std::uint64_t timestamp_us;
-    FakePandarPoint points[hal::LidarFrame::kMaxDemoPoints];
+    FakePandarPoint points[16u];
     std::uint32_t payload_crc32;
 };
 
@@ -72,7 +72,7 @@ FakePandarPacket buildPacket(std::uint32_t frame_id) {
     FakePandarPacket packet{};
     packet.magic       = kFakePandarMagic;
     packet.version     = kFakePandarVersion;
-    packet.point_count = hal::LidarFrame::kMaxDemoPoints;
+    packet.point_count = 16u;
     packet.frame_id    = frame_id;
     packet.timestamp_us = nowUs();
 
@@ -175,7 +175,7 @@ int main() {
         auto sub = dcms::defaultNode().subscribe<hal::LidarFrame>(
             topic_name, [&](const hal::LidarFrame &frame) {
                 const bool valid =
-                    frame.num_points == hal::LidarFrame::kMaxDemoPoints;
+                    frame.num_points == 16u;
                 if (!valid) return;
 
                 std::lock_guard<std::mutex> lk(state.mutex);
