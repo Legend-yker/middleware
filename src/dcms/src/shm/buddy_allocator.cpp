@@ -170,12 +170,30 @@ bool buddy_zone_init(struct buddy_zone *zone,
         p->_pad       = 0;
     }
 
-    // 自举初始化：对每个 PAGE 执行一次 coalesce_and_add(order=0)。
-    // 合并算法会自动把相邻同阶块合并成更大阶，遍历完所有页后
-    // free_area 自然形成正确的初态，等价于把整片 pool 注册进 buddy。
-    // 例：512KB=128PAGE → 最终 free_area[7] 有 1 个 128PAGE 的块。
-    for (uint32_t pfn = 0u; pfn < zone->nr_pages; pfn++)
-        coalesce_and_add(zone, pfn, 0u);
+    // 自举初始化：从最大阶向最小阶贪心铺设空闲块。
+    //
+    // 不能简单地"对每一页调用 coalesce_and_add(order=0)"：已经并进大块的页
+    // 会被再次插入链表（伙伴阶数不匹配时 break 后仍执行 list_add），同一段
+    // 内存在多个阶链表里重复计入，导致双重记账 —— 后续会分配出互相重叠的
+    // 块，写坏 ShmBufHeader / free list，表现为"内存不足"或随机段错误。
+    //
+    // 贪心铺设天然保证每个块对齐到自身大小，且每页只归属一个块。
+    // 例：nr_pages=7，max_order=3 → [0..3]阶2 + [4..5]阶1 + [6]阶0。
+    {
+        uint32_t used = 0u;
+        for (int32_t order = static_cast<int32_t>(zone->max_order) - 1;
+             order >= 0; --order) {
+            const uint32_t block_pages = 1u << order;
+            while (used + block_pages <= zone->nr_pages) {
+                struct bpage *head = &page_table[used];
+                head->flags    = PG_BUDDY;
+                head->order    = static_cast<uint8_t>(order);
+                head->refcount = 0;
+                list_add(&zone->free_area[order], head);
+                used += block_pages;
+            }
+        }
+    }
 
     return true;
 }

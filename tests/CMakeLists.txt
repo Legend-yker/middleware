@@ -17,6 +17,10 @@ target_link_libraries(dcms_smoke PRIVATE dcms dlog)
 middleware_set_module_output(dcms_smoke tests)
 add_test(NAME dcms_smoke COMMAND dcms_smoke)
 
+add_executable(dcms_bench dcms_bench.cpp)
+target_link_libraries(dcms_bench PRIVATE dcms dlog)
+middleware_set_module_output(dcms_bench tests)
+
 add_executable(dcms_rpc_smoke dcms_rpc_smoke.cpp)
 target_link_libraries(dcms_rpc_smoke PRIVATE dcms dlog)
 middleware_set_module_output(dcms_rpc_smoke tests)

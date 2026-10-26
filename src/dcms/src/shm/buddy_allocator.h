@@ -26,9 +26,11 @@ static constexpr uint32_t BUDDY_PAGE_SHIFT = 12u;
 /// PAGE 字节数 = 4096，整个系统的最小分配粒度。
 static constexpr uint32_t BUDDY_PAGE_SIZE  = 1u << BUDDY_PAGE_SHIFT;
 
-/// free_area 数组长度上界（阶 0..10），最大单次分配 = 2^10 PAGE = 4 MB。
-/// 实际用到几阶由 pool 大小决定（max_order 字段）。
-static constexpr uint32_t BUDDY_MAX_ORDER  = 11u;
+/// free_area 数组长度上界。
+/// 实际用到几阶由 pool 大小决定（max_order 字段），这里是数组容量的硬上限。
+/// 取 20：可用阶 0..19，最大单次分配 2^19 PAGE = 2 GB，
+/// 足以覆盖点云这类大帧（30MB 需要阶 13），同时 ARRAY 开销仍很小。
+static constexpr uint32_t BUDDY_MAX_ORDER  = 20u;
 
 // PAGE 状态标志位（可组合，不用枚举是因为 PG_SLAB|PG_TAIL 需要同时存在）
 static constexpr uint32_t PG_BUDDY = 0x01u; ///< 在 buddy 空闲链表中，可被分配

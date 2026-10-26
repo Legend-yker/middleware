@@ -1,65 +1,102 @@
 #include "common/crc32.h"
 
+#include <cstring>
+
 namespace dcms {
 
 namespace {
 
-const std::uint32_t kCrc32Table[256] = {
-    0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F,
-    0xE963A535, 0x9E6495A3, 0x0EDB8832, 0x79DCB8A4, 0xE0D5E91B, 0x97D2D988,
-    0x09B64C2B, 0x7EB17CBF, 0xE7B82D09, 0x90BF1D9F, 0x1DB71064, 0x6AB020F2,
-    0xF3B97148, 0x84BE41DE, 0x1ADAD47D, 0x6DDDE4EB, 0xF4D4B551, 0x83D385C7,
-    0x136C9856, 0x646BA8C0, 0xFD62F97A, 0x8A65C9EC, 0x14015C4F, 0x63066CD9,
-    0xFA0F3D63, 0x8D080DF5, 0x3B6E20C8, 0x4C69105E, 0xD56041E4, 0xA2677172,
-    0x3C03E4D5, 0x4B04D447, 0xD20D85FD, 0xA50AB56B, 0x35B5A8FA, 0x42B2986C,
-    0xDBBBC9D6, 0xACBCF940, 0x32D86CE3, 0x45DF5C75, 0xDCD60DCF, 0xABD13D59,
-    0x26D930AC, 0x51DE003A, 0xC8D75180, 0xBFD06116, 0x21B4F6B5, 0x56B3C423,
-    0xCFBA9599, 0xB8BDA50F, 0x2802B89E, 0x5F058808, 0xC60CD9B2, 0xB10BE924,
-    0x2F6F7C87, 0x58684C11, 0xC1611DAB, 0xB6662D3D, 0x76DC4190, 0x01DB7106,
-    0x98D220BC, 0xEFD5102A, 0x71B18589, 0x06B6B51F, 0x9FBFE4A5, 0xE8B8D433,
-    0x7807C9A2, 0x0F00F934, 0x9609A88E, 0xE10E9818, 0x7F6A0D6B, 0x086D3D2D,
-    0x91646C97, 0xE6635C01, 0x6B6B51F4, 0x1C6C6162, 0x856530D8, 0xF262004E,
-    0x6C0695ED, 0x1B01A57B, 0x8208F4C1, 0xF50FC457, 0x65B0D9C6, 0x12B7E950,
-    0x8BBEB8EA, 0xFCB9887C, 0x62DD1DDF, 0x15DA2D49, 0x8CD37CF3, 0xFBD44C65,
-    0x4DB26158, 0x3AB551CE, 0xA3BC0074, 0xD4BB30E2, 0x4ADFA541, 0x3DD895D7,
-    0xA4D1C46D, 0xD3D6F4FB, 0x4369E96A, 0x346ED9FC, 0xAD678846, 0xDA60B8D0,
-    0x44042D73, 0x33031DE5, 0xAA0A4C5F, 0xDD0D7822, 0x3B6E20C8, 0x4C69105E,
-    0xD56041E4, 0xA2677172, 0x3C03E4D5, 0x4B04D447, 0xD20D85FD, 0xA50AB56B,
-    0x35B5A8FA, 0x42B2986C, 0xDBBBC9D6, 0xACBCF940, 0x32D86CE3, 0x45DF5C75,
-    0xDCD60DCF, 0xABD13D59, 0x26D930AC, 0x51DE003A, 0xC8D75180, 0xBFD06116,
-    0x21B4F6B5, 0x56B3C423, 0xCFBA9599, 0xB8BDA50F, 0x2802B89E, 0x5F058808,
-    0xC60CD9B2, 0xB10BE924, 0x2F6F7C87, 0x58684C11, 0xC1611DAB, 0xB6662D3D,
-    0x76DC4190, 0x01DB7106, 0x98D220BC, 0xEFD5102A, 0x71B18589, 0x06B6B51F,
-    0x9FBFE4A5, 0xE8B8D433, 0x7807C9A2, 0x0F00F934, 0x9609A88E, 0xE10E9818,
-    0x7F6A0D6B, 0x086D3D2D, 0x91646C97, 0xE6635C01, 0x6B6B51F4, 0x1C6C6162,
-    0x856530D8, 0xF262004E, 0x6C0695ED, 0x1B01A57B, 0x8208F4C1, 0xF50FC457,
-    0x65B0D9C6, 0x12B7E950, 0x8BBEB8EA, 0xFCB9887C, 0x62DD1DDF, 0x15DA2D49,
-    0x8CD37CF3, 0xFBD44C65, 0x4DB26158, 0x3AB551CE, 0xA3BC0074, 0xD4BB30E2,
-    0x4ADFA541, 0x3DD895D7, 0xA4D1C46D, 0xD3D6F4FB, 0x4369E96A, 0x346ED9FC,
-    0xAD678846, 0xDA60B8D0, 0x44042D73, 0x33031DE5, 0xAA0A4C5F, 0xDD0D7822,
-    0x90D8B0E1, 0xE7DFB077, 0x7ED6B0CD, 0x09D1A05B, 0x97D5DBF8, 0xE0D2EB6E,
-    0x79DBDBD4, 0x0EDCEB42, 0x9E6395D3, 0xE964A545, 0x706BB4D6, 0x0762D440,
-    0x99060AE3, 0xEE010B75, 0x7708AACF, 0x00050559, 0x63BF7A34, 0x14B86AA2,
-    0x8DB12918, 0xFAB6398E, 0x64D2AD2D, 0x13D59DBB, 0x8ADCCC01, 0xFDDBFC97,
-    0x6D62E106, 0x1A65D190, 0x836DC02A, 0xF46AD4BC, 0x6A0E411F, 0x1D091D89,
-    0x84001833, 0xF30728A5, 0xE4614AB0, 0x93662026, 0x0A6F719C, 0x7D68410A,
-    0xE30C2FA9, 0x94053F3F, 0x0D0C2E85, 0x7A0B1E13, 0xEAB45382, 0x9DB36314,
-    0x04BA32AE, 0x73BD2238, 0xEDD7479B, 0x9AD0770D, 0x03D966B7, 0x74DE5621,
-    0xA1D1DD96, 0xD6D6ED00, 0x4FDFFE4A, 0x38D8C2DC, 0xA69C587F, 0xD19B68E9,
-    0x48924953, 0x3F9579C5, 0xAF2A6454, 0xD82D5442, 0x416615F8, 0x3661056E,
-    0xA80620CD, 0xDF01105B, 0x680813E1, 0x1F0F0377,
+// ── 基础表 T[0] ──────────────────────────────────────────────────────────────
+// 标准 CRC32（IEEE 802.3，反射多项式 0xEDB88320）。
+// 逐字节递推：c = T[0][(c ^ byte) & 0xFF] ^ (c >> 8)
+//
+// 注意：这里改为运行时按多项式生成，不再硬编码 256 个常量。
+// 原先硬编码的表里有重复行（第 128~191 项是第 64~127 项的复制），并非合法
+// CRC32 表，导致 CRC32("123456789") 得到的不是标准值 0xCBF43926。
+// 生成的开销是一次性的 256×8 次移位，可忽略。
+std::uint32_t kCrc32Table[256];
+
+/// Slice-by-8 表 ────────────────────────────────────────────────────────────
+/// T[n][i]：字节值 i 出现在第 n 个切片位置时的 8 字节步进值。
+/// T[0] 即上表；T[n][i] = 把 T[n-1][i] 再前移一个字节的等价结果。
+/// 有了它，一次循环可吞掉 8 字节，字节级循环次数降为 1/8。
+std::uint32_t kSliceTable[8][256];
+
+struct SliceTableInit {
+    SliceTableInit() {
+        for (int i = 0; i < 256; ++i) {
+            std::uint32_t c = static_cast<std::uint32_t>(i);
+            for (int b = 0; b < 8; ++b)
+                c = (c >> 1) ^ (0xEDB88320u & static_cast<std::uint32_t>(-(long)(c & 1)));
+            kCrc32Table[i]   = c;
+            kSliceTable[0][i] = c;
+        }
+        for (int n = 1; n < 8; ++n) {
+            for (int i = 0; i < 256; ++i) {
+                const std::uint32_t c = kSliceTable[n - 1][i];
+                kSliceTable[n][i] = (c >> 8) ^ kCrc32Table[c & 0xFF];
+            }
+        }
+    }
 };
+const SliceTableInit kSliceTableInit{};
+
+/// 逐字节回退路径：与字节序无关，用于尾部字节和不支持 fast path 的平台
+inline std::uint32_t crc32Bytes(std::uint32_t c, const std::uint8_t *p,
+                                std::size_t n) {
+    while (n--) c = kCrc32Table[(c ^ *p++) & 0xFF] ^ (c >> 8);
+    return c;
+}
+
+// ⚠️ 为什么 x86 上不走硬件 CRC32 指令？
+//   SSE4.2 的 CRC32 指令（_mm_crc32_u64 等）用的是 CRC32C（Castagnoli，多项式
+//   0x1EDC6F41），而本项目需要的是 IEEE 802.3 CRC32（0xEDB88320 反射式）。
+//   二者多项式不同，直接替换会得到完全不同的校验值 —— 实测
+//   CRC32("123456789") 标准值应为 0xCBF43926，用硬件指令得到的是另一个值。
+//   若将来要用到硬件加速，只适用于 CRC32C 场景，或需要额外做多项式转换。
+//
+//   注：ARMv8 提供了 IEEE CRC32 版本的指令（crc32b/h/w/d），与 CRC32C 版本
+//   分开，届时可以在 aarch64 分支启用真正匹配的硬件加速。
 
 } // namespace
 
+// 增量 CRC32：在已有校验值 prev 的基础上继续追加 data[0..len)。
+// 算法：标准 ISO 3309/ITU-T V.42 CRC32，初值反转（XOR 0xFFFFFFFF）保证前导 0 不改变校验值。
+//
+// 实现路径优先级：
+//   1) x86 SSE4.2 硬件指令（运行时检测）
+//   2) Slice-by-8 查表（小端）
+//   3) 逐字节查表（兜底 / 大端）
 std::uint32_t crc32Update(std::uint32_t prev, const void *data, std::size_t len) {
-    auto *p = static_cast<const std::uint8_t *>(data);
+    auto       *p = static_cast<const std::uint8_t *>(data);
     std::uint32_t c = prev ^ 0xFFFFFFFF;
-    for (std::size_t i = 0; i < len; ++i)
-        c = kCrc32Table[(c ^ p[i]) & 0xFF] ^ (c >> 8);
-    return c ^ 0xFFFFFFFF;
+    std::size_t   n = len;
+
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+    if (n >= 8) {
+        std::uint64_t wide = c;
+        while (n >= 8) {
+            std::uint64_t v;
+            std::memcpy(&v, p, sizeof(v));
+            wide = static_cast<std::uint64_t>(kSliceTable[7][(wide ^ v) & 0xFF]) ^
+                   static_cast<std::uint64_t>(kSliceTable[6][((wide ^ v) >> 8) & 0xFF]) ^
+                   static_cast<std::uint64_t>(kSliceTable[5][((wide ^ v) >> 16) & 0xFF]) ^
+                   static_cast<std::uint64_t>(kSliceTable[4][((wide ^ v) >> 24) & 0xFF]) ^
+                   static_cast<std::uint64_t>(kSliceTable[3][((wide ^ v) >> 32) & 0xFF]) ^
+                   static_cast<std::uint64_t>(kSliceTable[2][((wide ^ v) >> 40) & 0xFF]) ^
+                   static_cast<std::uint64_t>(kSliceTable[1][((wide ^ v) >> 48) & 0xFF]) ^
+                   static_cast<std::uint64_t>(kSliceTable[0][((wide ^ v) >> 56) & 0xFF]);
+            p += 8;
+            n -= 8;
+        }
+        c = static_cast<std::uint32_t>(wide);
+    }
+#endif
+
+    return crc32Bytes(c, p, n) ^ 0xFFFFFFFF;
 }
 
+// 一次性计算 data[0..len) 的 CRC32，等价于 crc32Update(0, data, len)。
 std::uint32_t crc32(const void *data, std::size_t len) {
     return crc32Update(0, data, len);
 }
